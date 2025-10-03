@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+             "command": "cmake --build out/build/build --parallel",
+             "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "Log Environment Variables",
+            "type": "shell",
+            "command": "printenv",  // Prints all environment variables
+            "group": "build",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            }
+        }
+    ]
+}

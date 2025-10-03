@@ -1,0 +1,39 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/inc",
+                "${workspaceFolder}/mainwindow",
+                "/usr/include/x86_64-linux-gnu/qt6",
+                "/usr/include/x86_64-linux-gnu/qt6/QtCore",
+                "/usr/include/x86_64-linux-gnu/qt6/QtGui",
+                "/usr/include/x86_64-linux-gnu/qt6/QtWidgets",
+                "/usr/include/x86_64-linux-gnu/qt5/QtGui",
+                "/usr/include/x86_64-linux-gnu/qt6/QtOpenGLWidgets",
+                "/usr/local/include/opencv4"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cppStandard": "gnu++20",
+            "intelliSenseMode": "linux-gcc-x64"
+        },
+        {
+            "name": "Win",
+            "includePath": [
+                "${workspaceFolder}/inc",
+                "${workspaceFolder}/mainwindow",
+                "C:/Qt/Qt-6.9.0/include/QtCore",
+                "C:/Qt/Qt-6.9.0/include/QtGui",
+                "C:/Qt/Qt-6.9.0/include/QtWidgets",
+                "C:/Qt/Qt-6.9.0/include/QtGui",
+                "C:/Qt/Qt-6.9.0/include/QtOpenGLWidgets",
+                "C:/opencv/build/include/opencv2"
+            ],
+            "defines": [],
+            "compilerPath": "cl",
+            "cppStandard": "gnu++20"
+        }
+    ],
+    "version": 4
+}

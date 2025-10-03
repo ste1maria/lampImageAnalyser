@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "iostream": "cpp",
+        "ostream": "cpp"
+    },
+    "cmake.configureSettings": {
+        "CMAKE_PREFIX_PATH": "/usr/lib/x86_64-linux-gnu/cmake"
+    }
+}

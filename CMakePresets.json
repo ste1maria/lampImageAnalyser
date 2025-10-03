@@ -1,0 +1,75 @@
+{
+  "version": 3,
+
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+
+  "configurePresets": [
+    {
+      "name": "windows-release",
+      "displayName": "Windows release ",
+      "description": "Builds in release mode using Ninja",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_MAKE_PROGRAM": "C:/ninja/ninja.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "Qt6_DIR": "C:/Qt/Qt-6.9.0/lib/cmake/Qt6",
+        "CMAKE_PREFIX_PATH": "C:/Qt/Qt-6.9.0/lib/cmake",
+        "OpenCV_DIR": "C:/opencv/build/x64/vc16/lib"
+      }
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux (GCC + Ninja)",
+      "description": "Builds for linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "/usr/lib/x86_64-linux-gnu/cmake",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "/usr/bin/gcc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "Qt6_DIR": "/usr/lib/x86_64-linux-gnu/cmake/Qt6"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux DEBUG",
+      "description": "Builds for linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "/usr/lib/x86_64-linux-gnu/cmake",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "/usr/bin/gcc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "Qt6_DIR": "/usr/lib/x86_64-linux-gnu/cmake/Qt6"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    {
+      "name": "build-windows",
+      "configurePreset": "windows-release"
+    },
+    {
+      "name": "build-linux",
+      "configurePreset": "linux"
+    },
+    
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    }
+  ]
+}
