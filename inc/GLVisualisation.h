@@ -21,14 +21,19 @@ public:
 
     void setImage(const QImage& imgIn);
 
+    void ActivateClicking(bool activate);
+
+signals:
+    void clickedImage(const QPointF& imgPt);
+    void clickedWidget(const QPoint& widgetPt);   // raw widget-space
+
 protected:
     void initializeGL() override;   // Called once to set up OpenGL context
     void resizeGL(int w, int h) override;  // Called on resize
     void paintGL() override;       // Called when widget needs to redraw  
+    void mousePressEvent(QMouseEvent* e) override;
 
-    private:
-    void ensureTexture();
-
+private:
     QOpenGLBuffer vbo_{QOpenGLBuffer::VertexBuffer};
     QOpenGLVertexArrayObject vao_;
     QOpenGLShaderProgram program_;
@@ -36,7 +41,12 @@ protected:
 
     QImage pendingImage_;     // last image set
     bool textureDirty_ = false;
-    QMutex imgMutex_;   
+    QMutex imgMutex_;
+
+    int imgW_ = 0, imgH_ = 0;
+
+    void ensureTexture();
+    std::optional<QPointF> widgetToImage(const QPointF& wpt) const;
 };
 
 

@@ -20,6 +20,8 @@ public:
 
 private slots:
     void UploadImage();
+    void SelectVertices();
+    void Deselect();
 
 private:
     Ui::MainWindow *ui;

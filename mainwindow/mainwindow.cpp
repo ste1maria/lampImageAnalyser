@@ -21,13 +21,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     this->imgProcessor->SetVisualizationWidget(this->visualisation);
 
-    ui->pushButtonEdgeDetect->setEnabled(false);
-    ui->pushButtonFindContours->setEnabled(false);
     ui->pushButtonVertices->setEnabled(false);
 
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
-    connect(ui->pushButtonEdgeDetect, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
-    connect(ui->pushButtonVertices, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::FindVerticesSlot);
+    connect(ui->pushButtonVertices, &QPushButton::clicked, this, &MainWindow::SelectVertices);
+    connect(ui->pushButtonDeselect, &QPushButton::clicked, this, &MainWindow::Deselect);
+
+    connect(this->visualisation.get(), &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
+    
 }
 
 MainWindow::~MainWindow()
@@ -56,4 +57,16 @@ void MainWindow::UploadImage()
             ui->pushButtonVertices->setEnabled(true);
         }
     }
+}
+
+void MainWindow::SelectVertices()
+{
+    ui->pushButtonDeselect->setEnabled(true);
+    this->visualisation->ActivateClicking(true);
+}
+
+void MainWindow::Deselect()
+{
+    ui->pushButtonDeselect->setEnabled(false);
+    this->visualisation->ActivateClicking(false);
 }

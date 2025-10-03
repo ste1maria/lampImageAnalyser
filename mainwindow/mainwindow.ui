@@ -59,14 +59,14 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QPushButton" name="pushButtonFindContours">
+      <item row="1" column="0">
+       <widget class="QPushButton" name="pushButtonVertices">
         <property name="text">
-         <string>Find contours</string>
+         <string>Select Vertices</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="3">
+      <item row="0" column="2">
        <spacer name="horizontalSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -79,10 +79,13 @@
         </property>
        </spacer>
       </item>
-      <item row="0" column="2">
-       <widget class="QPushButton" name="pushButtonVertices">
+      <item row="1" column="1">
+       <widget class="QPushButton" name="pushButtonDeselect">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="text">
-         <string>Find Vertices</string>
+         <string>Deselect vertices</string>
         </property>
        </widget>
       </item>

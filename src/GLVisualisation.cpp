@@ -1,5 +1,6 @@
 #include "GLVisualisation.h"
 #include <QOpenGLExtraFunctions>
+#include <QMouseEvent>
 
 
 static const char* kVertexSrc = R"(
@@ -155,9 +156,42 @@ void GLVisualisation::paintGL()
 
     texture_->release();
     program_.release();
+
+    imgW_ = texture_->width(); 
+    imgH_ = texture_->height();
 }
 
 void GLVisualisation::ShowImage(const QImage &image)
 {
     this->setImage(image);
 }
+
+void GLVisualisation::ActivateClicking(bool activate)
+{
+    setMouseTracking(activate);     // get move events without pressing
+}
+
+void GLVisualisation::mousePressEvent(QMouseEvent* e) {
+    emit clickedWidget(e->pos());
+    if (auto p = widgetToImage(e->position()); p.has_value())
+        emit clickedImage(*p);
+}
+
+std::optional<QPointF> GLVisualisation::widgetToImage(const QPointF& wpt) const {
+        if (imgW_ <= 0 || imgH_ <= 0) return std::nullopt;
+        const double W = width();
+        const double H = height();
+        const double sx = W / imgW_;
+        const double sy = H / imgH_;
+        const double s  = std::min(sx, sy);              // aspect-fit
+        const double dx = (W - imgW_ * s) * 0.5;         // horizontal letterbox
+        const double dy = (H - imgH_ * s) * 0.5;         // vertical letterbox
+
+        const double x_img = (wpt.x() - dx) / s;
+        const double y_img = (wpt.y() - dy) / s;         // top-left origin
+
+        if (x_img < 0 || y_img < 0 || x_img >= imgW_ || y_img >= imgH_)
+            return std::nullopt; // clicked on letterbox area
+        return QPointF{x_img, y_img};
+    }
+

@@ -8,7 +8,7 @@
 #include <QFileDialog>
 
 cv::Mat imgBlur;
-int thresh = 50;
+int thresh = 5;
 std::vector<std::vector<cv::Point> > contours;
 
 void onMouse(int event, int x, int y, int flags, void* userdata)
@@ -32,6 +32,17 @@ void onMouse(int event, int x, int y, int flags, void* userdata)
             }
         }
     }
+}
+
+void LampImageAnalyser::SetCurrentImage(const QImage& image)
+{
+    uint8_t * buffer = (uint8_t*)image.bits();
+    size_t width = image.width();
+    size_t height = image.height();
+    size_t stride = image.bytesPerLine();
+
+    this->currentImage = cv::Mat(height, width, CV_8U, buffer, stride);
+    this->currentImagePtr = std::make_shared<cv::Mat>(this->currentImage);    
 }
 
 void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
@@ -86,6 +97,17 @@ void LampImageAnalyser::FindContours(cv::Mat inputImage)
     const char* source_window = "Source";
     cv::namedWindow(source_window);
     cv::imshow(source_window, inputImage);
+
+    // cv::RNG rng(12345);
+    // std::vector<cv::Vec4i> hierarchy;
+    // cv::findContours(inputImage, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+    // cv::Mat drawing = cv::Mat::zeros(inputImage.size(), CV_8UC3);
+    // for(size_t i = 0; i< contours.size(); i++)
+    // {
+    //     cv::Scalar color = cv::Scalar(rng.uniform(0, 256), rng.uniform(0,256), rng.uniform(0,256));
+    //     drawContours(drawing, contours, (int)i, color, 1, cv::LINE_8, hierarchy, 0);
+    // }
+    // imshow("Contours", drawing);
 
     const int max_thresh = 255;
     cv::createTrackbar("Canny thresh:", source_window, &thresh, max_thresh, &LampImageAnalyser::thresh_callback, this);
@@ -151,8 +173,7 @@ std::vector<cv::Point> extractVerticesFromContour(const std::vector<cv::Point>& 
 
 void LampImageAnalyser::DrawVertices(QImage& inputImage)
 {
-    this->RunEdgeDetection(inputImage);
-    this->FindContours(this->edgeDetectedImage);
+    //this->RunEdgeDetection(inputImage);
 
     uint8_t * buffer = (uint8_t*)inputImage.bits();
     size_t width = inputImage.width();
@@ -160,6 +181,13 @@ void LampImageAnalyser::DrawVertices(QImage& inputImage)
     size_t stride = inputImage.bytesPerLine();
 
     cv::Mat img = cv::Mat(height, width, CV_8U, buffer, stride);
+    cv::Mat imgContrasted, imgBlur;
+
+    cv::convertScaleAbs(img, imgContrasted, 1.4);
+    cv::blur(imgContrasted, imgBlur, cv::Size(10,10)); 
+
+    this->edgeDetectedImage = imgBlur;
+    this->FindContours(this->edgeDetectedImage);
 
     for (auto& c : contours) {
         auto verts = extractVerticesFromContour(c,
@@ -174,4 +202,10 @@ void LampImageAnalyser::DrawVertices(QImage& inputImage)
         }
     }
     cv::imshow("Vertices", img);
+}
+
+void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
+{
+    cv::circle(this->currentImage, cv::Point(imgPt.x(), imgPt.y()), 3, cv::Scalar(255,255,255), cv::FILLED);
+    emit ShowVerticeOnImage(this->currentImagePtr);
 }

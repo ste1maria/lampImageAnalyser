@@ -2,6 +2,7 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include "LampImageAnalyser.h"
+#include <QDebug>
 
 ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     :
@@ -9,6 +10,8 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
 {
     this->visualization = nullptr;
     this->analyser = std::make_unique<LampImageAnalyser>();
+
+    connect(this->analyser.get(), &LampImageAnalyser::ShowVerticeOnImage, this, &ImageProcessor::ShowVerticeOnImage);
 }
 
 ImageProcessor::~ImageProcessor()
@@ -33,13 +36,14 @@ bool ImageProcessor::UploadImage(QString fileName)
     }
 
     this->currentImage = image.convertToFormat(QImage::Format_Grayscale8);
-    this->ShowImage();
+    this->ShowImage(currentImage);
     return true;
 }
 
-void ImageProcessor::ShowImage()
+void ImageProcessor::ShowImage(QImage& image)
 {
-    this->visualization->ShowImage(this->currentImage);
+    this->visualization->ShowImage(image);
+    this->analyser->SetCurrentImage(image);
 }
 
 void ImageProcessor::SaveImage()
@@ -81,4 +85,25 @@ void ImageProcessor::RunEdgeDetectionSlot()
 void ImageProcessor::FindVerticesSlot()
 {
     this->analyser->DrawVertices(this->currentImage);
+}
+
+void ImageProcessor::SelectVerticesSlot()
+{
+    //this->analyser->SelectVertices();
+}
+
+void ImageProcessor::ClearVerticesSlot()
+{
+    //this->analyser->ClearVertices();
+}
+
+void ImageProcessor::PaintVerticeSlot(const QPointF& imgPt)
+{
+    this->analyser->PaintVertice(imgPt);
+}
+
+void ImageProcessor::ShowVerticeOnImage(std::shared_ptr<cv::Mat> img)
+{
+    this->imageWithVertices = QImage(img->data, img->cols, img->rows, img->step, QImage::Format_Grayscale8);
+    this->ShowImage(this->imageWithVertices);
 }

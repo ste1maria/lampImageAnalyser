@@ -68,7 +68,8 @@
 			"typeinfo": "cpp",
 			"variant": "cpp",
 			"future": "cpp",
-			"qobject": "cpp"
+			"qobject": "cpp",
+			"qmutex": "cpp"
 		}
 	}
 }
