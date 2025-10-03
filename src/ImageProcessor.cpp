@@ -1,12 +1,14 @@
 #include "ImageProcessor.h"
 #include <QMessageBox>
 #include <QFileDialog>
+#include "LampImageAnalyser.h"
 
 ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     :
     mainWindow(mainWindow)
 {
-
+    this->visualization = nullptr;
+    this->analyser = std::make_unique<LampImageAnalyser>();
 }
 
 ImageProcessor::~ImageProcessor()
@@ -67,4 +69,15 @@ void ImageProcessor::SaveCalculations()
     {
         QTextStream out(&data);
     }
+}
+
+
+void ImageProcessor::RunEdgeDetectionSlot()
+{
+    uint8_t * buffer = (uint8_t*)this->currentImage.bits();
+    size_t width = this->currentImage.width();
+    size_t height = this->currentImage.height();
+    size_t stride = currentImage.bytesPerLine();
+
+    this->analyser->RunEdgeDetection(height, width, buffer, stride); 
 }

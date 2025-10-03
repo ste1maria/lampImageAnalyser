@@ -5,6 +5,7 @@
 
 class MainWindow;
 class GLVisualisation;
+class LampImageAnalyser;
 
 class ImageProcessor : public QObject
 {
@@ -23,9 +24,11 @@ private:
 public slots:
     void SaveCalculations();
     void SaveImage();
+    void RunEdgeDetectionSlot();
 
 private:
     MainWindow *mainWindow;
     std::shared_ptr<GLVisualisation> visualization;
     QImage currentImage;
+    std::unique_ptr<LampImageAnalyser> analyser;
 };

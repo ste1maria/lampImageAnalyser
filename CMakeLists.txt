@@ -37,9 +37,15 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/inc/GLVisualisation.h
     ${CMAKE_SOURCE_DIR}/src/ImageProcessor.cpp
     ${CMAKE_SOURCE_DIR}/inc/ImageProcessor.h
+    ${CMAKE_SOURCE_DIR}/src/LampImageAnalyser.cpp
+    ${CMAKE_SOURCE_DIR}/inc/LampImageAnalyser.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    WIN32_EXECUTABLE TRUE  # hides console on Windows
+    MACOSX_BUNDLE TRUE     # makes a proper .app on macOS
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGLWidgets Qt6::Charts)
 

@@ -53,9 +53,9 @@
     <item>
      <layout class="QGridLayout" name="gridLayout">
       <item row="0" column="0">
-       <widget class="QPushButton" name="pushButtonElectodesDist">
+       <widget class="QPushButton" name="pushButtonEdgeDetect">
         <property name="text">
-         <string>Find Electrodes Distance</string>
+         <string>Run Edge Detection</string>
         </property>
        </widget>
       </item>
