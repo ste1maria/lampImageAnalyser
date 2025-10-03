@@ -21,8 +21,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     this->imgProcessor->SetVisualizationWidget(this->visualisation);
 
+    ui->pushButtonEdgeDetect->setEnabled(false);
+    ui->pushButtonFindContours->setEnabled(false);
+    ui->pushButtonVertices->setEnabled(false);
+
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
     connect(ui->pushButtonEdgeDetect, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
+    connect(ui->pushButtonVertices, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::FindVerticesSlot);
 }
 
 MainWindow::~MainWindow()
@@ -45,6 +50,10 @@ void MainWindow::UploadImage()
     }
     else
     {
-        this->imgProcessor->UploadImage(fileName);
+        if (this->imgProcessor->UploadImage(fileName))
+        {
+            ui->pushButtonEdgeDetect->setEnabled(true);
+            ui->pushButtonVertices->setEnabled(true);
+        }
     }
 }

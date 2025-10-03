@@ -20,19 +20,21 @@ void ImageProcessor::SetVisualizationWidget(std::shared_ptr<GLVisualisation> vis
     this->visualization = visWidget;
 }
 
-void ImageProcessor::UploadImage(QString fileName)
+bool ImageProcessor::UploadImage(QString fileName)
 {
+
     QImage image(fileName);
     if (image.isNull()) 
     {
         QMessageBox warningBox;
         warningBox.setText("Failed to load image.");
         warningBox.exec();
-        return;
+        return false;
     }
 
     this->currentImage = image.convertToFormat(QImage::Format_Grayscale8);
     this->ShowImage();
+    return true;
 }
 
 void ImageProcessor::ShowImage()
@@ -71,13 +73,12 @@ void ImageProcessor::SaveCalculations()
     }
 }
 
-
 void ImageProcessor::RunEdgeDetectionSlot()
 {
-    uint8_t * buffer = (uint8_t*)this->currentImage.bits();
-    size_t width = this->currentImage.width();
-    size_t height = this->currentImage.height();
-    size_t stride = currentImage.bytesPerLine();
+    this->analyser->RunEdgeDetection(this->currentImage); 
+}
 
-    this->analyser->RunEdgeDetection(height, width, buffer, stride); 
+void ImageProcessor::FindVerticesSlot()
+{
+    this->analyser->DrawVertices(this->currentImage);
 }

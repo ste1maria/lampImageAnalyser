@@ -67,7 +67,8 @@
 			"thread": "cpp",
 			"typeinfo": "cpp",
 			"variant": "cpp",
-			"future": "cpp"
+			"future": "cpp",
+			"qobject": "cpp"
 		}
 	}
 }

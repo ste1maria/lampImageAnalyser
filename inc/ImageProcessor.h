@@ -16,7 +16,7 @@ public:
     ~ImageProcessor();
 
     void SetVisualizationWidget(std::shared_ptr<GLVisualisation> visWidget);
-    void UploadImage(QString fileName);
+    bool UploadImage(QString fileName);
 
 private:
     void ShowImage();
@@ -25,10 +25,12 @@ public slots:
     void SaveCalculations();
     void SaveImage();
     void RunEdgeDetectionSlot();
+    void FindVerticesSlot();
 
 private:
     MainWindow *mainWindow;
     std::shared_ptr<GLVisualisation> visualization;
     QImage currentImage;
     std::unique_ptr<LampImageAnalyser> analyser;
+
 };

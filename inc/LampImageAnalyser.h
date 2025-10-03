@@ -11,8 +11,15 @@ public:
     
     ~LampImageAnalyser(){};
 
-    void RunEdgeDetection(size_t height, size_t width, uint8_t* buffer, size_t stride);
+    void RunEdgeDetection(QImage& inputImage);
+    void FindContours(cv::Mat inputImage);
+    void DrawVertices(QImage& inputImage);
+
 signals:
     void ImageProcessed(const cv::Mat &processedImage);
 
+private:
+    cv::Mat edgeDetectedImage;
+
+    static void thresh_callback(int, void* );
 };
