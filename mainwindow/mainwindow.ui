@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>XWS Plasma Analyzer</string>
+   <string>Lamp Image Analyser</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="sizePolicy">
@@ -52,6 +52,13 @@
     </item>
     <item>
      <layout class="QGridLayout" name="gridLayout">
+      <item row="1" column="1">
+       <widget class="QLabel" name="labelDistance">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QPushButton" name="pushButtonEdgeDetect">
         <property name="text">
@@ -60,13 +67,16 @@
        </widget>
       </item>
       <item row="1" column="0">
-       <widget class="QPushButton" name="pushButtonVertices">
+       <widget class="QPushButton" name="pushButtonDeselect">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="text">
-         <string>Select Vertices</string>
+         <string>Deselect vertices</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="2">
+      <item row="1" column="2">
        <spacer name="horizontalSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -78,16 +88,6 @@
          </size>
         </property>
        </spacer>
-      </item>
-      <item row="1" column="1">
-       <widget class="QPushButton" name="pushButtonDeselect">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="text">
-         <string>Deselect vertices</string>
-        </property>
-       </widget>
       </item>
      </layout>
     </item>

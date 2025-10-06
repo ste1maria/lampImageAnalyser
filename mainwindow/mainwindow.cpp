@@ -21,13 +21,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     this->imgProcessor->SetVisualizationWidget(this->visualisation);
 
-    ui->pushButtonVertices->setEnabled(false);
+    ui->pushButtonDeselect->setEnabled(false);
+    ui->pushButtonEdgeDetect->setEnabled(false);
+    ui->labelDistance->clear();
 
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
-    connect(ui->pushButtonVertices, &QPushButton::clicked, this, &MainWindow::SelectVertices);
     connect(ui->pushButtonDeselect, &QPushButton::clicked, this, &MainWindow::Deselect);
 
     connect(this->visualisation.get(), &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
+    connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
     
 }
 
@@ -54,19 +56,21 @@ void MainWindow::UploadImage()
         if (this->imgProcessor->UploadImage(fileName))
         {
             ui->pushButtonEdgeDetect->setEnabled(true);
-            ui->pushButtonVertices->setEnabled(true);
+            ui->labelDistance->setText("Select two dots to calculate distance");
         }
     }
-}
-
-void MainWindow::SelectVertices()
-{
-    ui->pushButtonDeselect->setEnabled(true);
-    this->visualisation->ActivateClicking(true);
 }
 
 void MainWindow::Deselect()
 {
     ui->pushButtonDeselect->setEnabled(false);
-    this->visualisation->ActivateClicking(false);
+    ui->labelDistance->setText("Select two dots to calculate distance");
+    this->imgProcessor->ClearVertices();
+
+}
+
+void MainWindow::ShowVerticesDistanceAngle(float distance, float angle)
+{
+    ui->labelDistance->setText(QString("Distance: %1 px; Angle: %2°").arg(distance).arg(angle));
+    ui->pushButtonDeselect->setEnabled(true);
 }

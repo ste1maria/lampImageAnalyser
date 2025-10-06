@@ -3,6 +3,7 @@
 #include <QFileDialog>
 #include "LampImageAnalyser.h"
 #include <QDebug>
+#include <cmath>
 
 ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     :
@@ -36,11 +37,12 @@ bool ImageProcessor::UploadImage(QString fileName)
     }
 
     this->currentImage = image.convertToFormat(QImage::Format_Grayscale8);
+    originalImage = currentImage.copy();
     this->ShowImage(currentImage);
     return true;
 }
 
-void ImageProcessor::ShowImage(QImage& image)
+void ImageProcessor::ShowImage(const QImage& image)
 {
     this->visualization->ShowImage(image);
     this->analyser->SetCurrentImage(image);
@@ -51,7 +53,7 @@ void ImageProcessor::SaveImage()
     QString filename = QFileDialog::getSaveFileName(
             nullptr,
             "Save Image As",
-            "plasma.png",
+            "lamp.png",
             "Images (*.png *.bmp);;All Files (*)"
     );
 
@@ -66,7 +68,7 @@ void ImageProcessor::SaveCalculations()
     QString filename = QFileDialog::getSaveFileName(
             nullptr,
             "Save Calculations As",
-            "plasma_calculations.txt",
+            "lamp_calculations.txt",
             "Text file (*.txt *.csv);;All Files (*)"
     );
     QFile data(filename);
@@ -87,23 +89,56 @@ void ImageProcessor::FindVerticesSlot()
     this->analyser->DrawVertices(this->currentImage);
 }
 
-void ImageProcessor::SelectVerticesSlot()
+void ImageProcessor::ClearVertices()
 {
-    //this->analyser->SelectVertices();
-}
-
-void ImageProcessor::ClearVerticesSlot()
-{
-    //this->analyser->ClearVertices();
+    vertex_count = 0;
+    currentImage = originalImage.copy();
+    this->ShowImage(this->currentImage);
 }
 
 void ImageProcessor::PaintVerticeSlot(const QPointF& imgPt)
 {
-    this->analyser->PaintVertice(imgPt);
+    if (vertex_count < 2)
+    {
+        vertex_count++;
+        this->analyser->PaintVertice(imgPt);
+        if (vertex_count == 1)
+        {
+            vertices.first = imgPt;
+        }
+        else if (vertex_count == 2)
+        {
+            vertices.second = imgPt;
+        }
+    }
+
+    if (vertex_count == 2)
+    {
+        // calculate distance
+        QPair<float, float> result = this->CalculateDistanceAngle();
+        float distance = result.first;
+        float angle = result.second;
+        emit DistanceCalculated(distance, angle);
+    }
 }
 
 void ImageProcessor::ShowVerticeOnImage(std::shared_ptr<cv::Mat> img)
 {
-    this->imageWithVertices = QImage(img->data, img->cols, img->rows, img->step, QImage::Format_Grayscale8);
-    this->ShowImage(this->imageWithVertices);
+    this->currentImage = QImage(img->data, img->cols, img->rows, img->step, QImage::Format_Grayscale8);
+    this->ShowImage(this->currentImage);
+}
+
+QPair<float, float> ImageProcessor::CalculateDistanceAngle()
+{
+    float distance = sqrt( pow((vertices.second.x() - vertices.first.x()), 2) +
+                           pow((vertices.second.y() - vertices.first.y()), 2)
+                        );
+    QLineF line(vertices.first, vertices.second);
+    double angle = std::abs(90.0 - line.angle());
+    if (angle > 90) 
+    {
+        angle = 180.0 - angle;
+    }
+
+    return QPair(distance, angle);
 }

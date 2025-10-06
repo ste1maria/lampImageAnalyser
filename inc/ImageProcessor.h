@@ -19,18 +19,17 @@ public:
 
     void SetVisualizationWidget(std::shared_ptr<GLVisualisation> visWidget);
     bool UploadImage(QString fileName);
+    void ClearVertices();
 
-private:
-    void ShowImage(QImage& image);
+
+signals:
+    void DistanceCalculated(float distance, float angle);
 
 public slots:
     void SaveCalculations();
     void SaveImage();
     void RunEdgeDetectionSlot();
     void FindVerticesSlot();
-    void SelectVerticesSlot();
-    void ClearVerticesSlot();
-
     void PaintVerticeSlot(const QPointF& imgPt);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
 
@@ -38,6 +37,12 @@ private:
     MainWindow *mainWindow;
     std::shared_ptr<GLVisualisation> visualization;
     QImage currentImage;
+    QImage originalImage;
     std::unique_ptr<LampImageAnalyser> analyser;
-    QImage imageWithVertices;
+
+    QPair<QPointF, QPointF> vertices;
+    int vertex_count = 0;
+
+    QPair<float, float> CalculateDistanceAngle();
+    void ShowImage(const QImage& image);
 };

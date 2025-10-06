@@ -30,6 +30,7 @@ GLVisualisation::GLVisualisation(QWidget *parent)
     : QOpenGLWidget(parent)
 {
     setMinimumSize(640, 480);
+    setMouseTracking(true); 
 }
 
 GLVisualisation::~GLVisualisation()
@@ -164,11 +165,6 @@ void GLVisualisation::paintGL()
 void GLVisualisation::ShowImage(const QImage &image)
 {
     this->setImage(image);
-}
-
-void GLVisualisation::ActivateClicking(bool activate)
-{
-    setMouseTracking(activate);     // get move events without pressing
 }
 
 void GLVisualisation::mousePressEvent(QMouseEvent* e) {

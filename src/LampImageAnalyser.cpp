@@ -6,6 +6,7 @@
 #include <opencv2/core/fast_math.hpp>
 #include <QDebug>
 #include <QFileDialog>
+#include <opencv2/core/cvstd.hpp>
 
 cv::Mat imgBlur;
 int thresh = 5;
@@ -34,6 +35,11 @@ void onMouse(int event, int x, int y, int flags, void* userdata)
     }
 }
 
+LampImageAnalyser::LampImageAnalyser()
+{
+    this->currentImageCv = std::make_shared<cv::Mat>();
+};
+
 void LampImageAnalyser::SetCurrentImage(const QImage& image)
 {
     uint8_t * buffer = (uint8_t*)image.bits();
@@ -41,8 +47,7 @@ void LampImageAnalyser::SetCurrentImage(const QImage& image)
     size_t height = image.height();
     size_t stride = image.bytesPerLine();
 
-    this->currentImage = cv::Mat(height, width, CV_8U, buffer, stride);
-    this->currentImagePtr = std::make_shared<cv::Mat>(this->currentImage);    
+    *this->currentImageCv = cv::Mat(height, width, CV_8U, buffer, stride);
 }
 
 void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
@@ -206,6 +211,14 @@ void LampImageAnalyser::DrawVertices(QImage& inputImage)
 
 void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
 {
-    cv::circle(this->currentImage, cv::Point(imgPt.x(), imgPt.y()), 3, cv::Scalar(255,255,255), cv::FILLED);
-    emit ShowVerticeOnImage(this->currentImagePtr);
+    cv::circle(*this->currentImageCv, cv::Point(imgPt.x(), imgPt.y()), 3, cv::Scalar(255,255,255), cv::FILLED);
+    cv::String coordinates = cv::String(std::format("({},{})", imgPt.x(), imgPt.y()));
+    cv::putText(*this->currentImageCv, 
+                coordinates, 
+                cv::Point(imgPt.x() + 5, imgPt.y() + 5),
+                cv::FONT_HERSHEY_PLAIN,
+                1,
+                cv::Scalar(255, 0, 0)
+    );
+    emit ShowVerticeOnImage(this->currentImageCv);
 }

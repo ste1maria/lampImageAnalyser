@@ -18,10 +18,7 @@ public:
     ~GLVisualisation();
 
     void ShowImage(const QImage &image);
-
     void setImage(const QImage& imgIn);
-
-    void ActivateClicking(bool activate);
 
 signals:
     void clickedImage(const QPointF& imgPt);

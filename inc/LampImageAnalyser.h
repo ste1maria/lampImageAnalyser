@@ -8,7 +8,7 @@ class LampImageAnalyser : public QObject
 {
     Q_OBJECT
 public:
-    LampImageAnalyser(){};
+    LampImageAnalyser();
     
     ~LampImageAnalyser(){};
 
@@ -16,8 +16,6 @@ public:
     void FindContours(cv::Mat inputImage);
     void DrawVertices(QImage& inputImage);
 
-    void SelectVertices();
-    void ClearVertices();
     void PaintVertice(const QPointF& imgPt);
 
     void SetCurrentImage(const QImage& image);
@@ -28,8 +26,7 @@ signals:
 
 private:
     cv::Mat edgeDetectedImage;
-    cv::Mat currentImage;
-    std::shared_ptr<cv::Mat> currentImagePtr;
+    std::shared_ptr<cv::Mat> currentImageCv;
 
     static void thresh_callback(int, void* );
 };

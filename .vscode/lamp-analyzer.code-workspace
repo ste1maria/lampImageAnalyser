@@ -69,7 +69,8 @@
 			"variant": "cpp",
 			"future": "cpp",
 			"qobject": "cpp",
-			"qmutex": "cpp"
+			"qmutex": "cpp",
+			"qmainwindow": "cpp"
 		}
 	}
 }

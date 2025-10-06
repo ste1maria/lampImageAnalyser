@@ -18,9 +18,11 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+public slots:
+    void ShowVerticesDistanceAngle(float distance, float angle);
+
 private slots:
     void UploadImage();
-    void SelectVertices();
     void Deselect();
 
 private:
