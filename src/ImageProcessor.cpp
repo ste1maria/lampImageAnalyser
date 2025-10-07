@@ -150,7 +150,7 @@ void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
         processedImage->cols,
         processedImage->rows, 
         processedImage->step,
-        QImage::Format_BGR888
+        QImage::Format_Grayscale8
     );
     this->ShowImage(this->currentImage);
 }

@@ -130,15 +130,17 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
 
         cv::Mat coloredEdges; 
         cv::cvtColor(img, coloredEdges, cv::COLOR_GRAY2BGR);
+
+        cv::Scalar col(0, 0, 0); // highlight top curves
         for (size_t i = 0; i < this->contours.size(); ++i) 
         {
-            cv::Scalar col(0, 255*(i<3), 255*(i==0)); // highlight top curves
             cv::polylines(coloredEdges, this->contours[i], false, col, 1, cv::LINE_AA);
         }
-        //cv::imshow("Curves", coloredEdges);
+        cv::Mat edgedImageBW;
+        cv::cvtColor(coloredEdges, edgedImageBW, cv::COLOR_BGR2GRAY);
         
         this->edgeDetectedImage = contouredImg;
-        *this->currentImageCv = coloredEdges;
+        *this->currentImageCv = edgedImageBW;
         emit ImageProcessed(this->currentImageCv);
     }
     catch(const cv::Exception e)
