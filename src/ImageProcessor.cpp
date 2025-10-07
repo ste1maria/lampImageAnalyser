@@ -13,6 +13,7 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     this->analyser = std::make_unique<LampImageAnalyser>();
 
     connect(this->analyser.get(), &LampImageAnalyser::ShowVerticeOnImage, this, &ImageProcessor::ShowVerticeOnImage);
+    connect(this->analyser.get(), &LampImageAnalyser::ImageProcessed, this, &ImageProcessor::ShowEdgedImage);
 }
 
 ImageProcessor::~ImageProcessor()
@@ -84,10 +85,10 @@ void ImageProcessor::RunEdgeDetectionSlot()
     this->analyser->RunEdgeDetection(this->currentImage); 
 }
 
-void ImageProcessor::FindVerticesSlot()
-{
-    this->analyser->DrawVertices(this->currentImage);
-}
+// void ImageProcessor::FindVerticesSlot()
+// {
+//     this->analyser->DrawVertices(this->currentImage);
+// }
 
 void ImageProcessor::ClearVertices()
 {
@@ -141,4 +142,15 @@ QPair<float, float> ImageProcessor::CalculateDistanceAngle()
     }
 
     return QPair(distance, angle);
+}
+
+void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
+{
+    this->currentImage = QImage(processedImage->data, 
+        processedImage->cols,
+        processedImage->rows, 
+        processedImage->step,
+        QImage::Format_BGR888
+    );
+    this->ShowImage(this->currentImage);
 }

@@ -13,20 +13,20 @@ public:
     ~LampImageAnalyser(){};
 
     void RunEdgeDetection(QImage& inputImage);
-    void FindContours(cv::Mat inputImage);
-    void DrawVertices(QImage& inputImage);
 
     void PaintVertice(const QPointF& imgPt);
 
     void SetCurrentImage(const QImage& image);
 
 signals:
-    void ImageProcessed(const cv::Mat &processedImage);
+    void ImageProcessed(std::shared_ptr<cv::Mat> img);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
 
 private:
     cv::Mat edgeDetectedImage;
     std::shared_ptr<cv::Mat> currentImageCv;
+    std::vector<std::vector<cv::Point>> contours;
 
     static void thresh_callback(int, void* );
+    void TraceCurves();
 };

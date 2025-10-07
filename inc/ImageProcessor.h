@@ -25,13 +25,14 @@ public:
 signals:
     void DistanceCalculated(float distance, float angle);
 
+
 public slots:
     void SaveCalculations();
     void SaveImage();
     void RunEdgeDetectionSlot();
-    void FindVerticesSlot();
     void PaintVerticeSlot(const QPointF& imgPt);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
+    void ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage);
 
 private:
     MainWindow *mainWindow;

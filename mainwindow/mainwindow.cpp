@@ -25,6 +25,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->pushButtonEdgeDetect->setEnabled(false);
     ui->labelDistance->clear();
 
+    connect(ui->pushButtonEdgeDetect, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
     connect(ui->pushButtonDeselect, &QPushButton::clicked, this, &MainWindow::Deselect);
 

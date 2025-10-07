@@ -55,6 +55,8 @@ if(UNIX)
         opencv_imgproc
         opencv_imgcodecs
         opencv_highgui
+        opencv_highgui
+        opencv_ximgproc
     )
 elseif(WIN32)
 target_link_libraries(${PROJECT_NAME} PRIVATE
