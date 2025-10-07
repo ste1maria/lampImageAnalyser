@@ -15,6 +15,7 @@ public:
     void RunEdgeDetection(QImage& inputImage);
 
     void PaintVertice(const QPointF& imgPt);
+    void PaintCircleCenter(cv::Point point);
 
     void SetCurrentImage(const QImage& image);
 

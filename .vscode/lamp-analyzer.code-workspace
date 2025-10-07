@@ -70,7 +70,8 @@
 			"future": "cpp",
 			"qobject": "cpp",
 			"qmutex": "cpp",
-			"qmainwindow": "cpp"
+			"qmainwindow": "cpp",
+			"deque": "cpp"
 		}
 	}
 }

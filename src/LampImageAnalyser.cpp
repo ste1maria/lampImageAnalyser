@@ -79,11 +79,9 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
     try
     {
         cv::Mat img = cv::Mat(height, width, CV_8U, buffer, stride);
-        cv::Mat imgContrasted, imgBlur, gray;
+        cv::Mat imgBlur;
 
-        cv::convertScaleAbs(img, imgContrasted, 1.2);
-        cv::blur(imgContrasted, imgBlur, cv::Size(10,10));
-
+        cv::blur(img, imgBlur, cv::Size(10,10));
         // SOBEL
         cv::Mat sobelx, sobely, gradient;
         // Apply Sobel operator
@@ -141,7 +139,10 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
         
         this->edgeDetectedImage = contouredImg;
         *this->currentImageCv = edgedImageBW;
+
         emit ImageProcessed(this->currentImageCv);
+
+        TraceCurves();
     }
     catch(const cv::Exception e)
     {
@@ -155,7 +156,7 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
 
 void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
 {
-    cv::circle(*this->currentImageCv, cv::Point(imgPt.x(), imgPt.y()), 3, cv::Scalar(255,255,255), cv::FILLED);
+    cv::drawMarker(*this->currentImageCv, cv::Point(imgPt.x(), imgPt.y()), cv::Scalar(255,255,255), cv::FILLED);
     cv::String coordinates = cv::String(std::format("({},{})", imgPt.x(), imgPt.y()));
     cv::putText(*this->currentImageCv, 
                 coordinates, 
@@ -167,7 +168,224 @@ void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
     emit ShowVerticeOnImage(this->currentImageCv);
 }
 
+void LampImageAnalyser::PaintCircleCenter(cv::Point point)
+{
+    cv::circle(*this->currentImageCv, point, 3, cv::Scalar(0,255,0), cv::FILLED);
+    cv::String coordinates = cv::String(std::format("({},{})", point.x, point.y));
+    cv::putText(*this->currentImageCv, 
+                coordinates, 
+                cv::Point(point.x + 5, point.y),
+                cv::FONT_HERSHEY_PLAIN,
+                1,
+                cv::Scalar(255, 0, 0)
+    );
+    emit ShowVerticeOnImage(this->currentImageCv);
+}
+
+// 1) resample the polyline by arc length (open/closed)
+static std::vector<cv::Point2f> resampleByArcLen(const std::vector<cv::Point2f>& P, float ds, bool closed=false) {
+    std::vector<cv::Point2f> Q; 
+    Q.reserve(P.size()+1);
+    for (auto& p : P) 
+        Q.emplace_back(p);
+    if (closed && (Q.front()!=Q.back())) 
+        Q.push_back(Q.front());
+
+    std::vector<float> S(Q.size(), 0.f);
+    for (size_t i=1;i<Q.size();++i) 
+        S[i] = S[i-1] + cv::norm(Q[i]-Q[i-1]);
+    float L = S.back(); 
+    if (L <= ds) 
+        return Q;
+
+    int M = std::max(2, int(std::floor(L/ds))+1);
+    std::vector<cv::Point2f> R; 
+    R.reserve(M);
+    for (int m=0; m<M; ++m) 
+    {
+        float s = std::min(m*ds, L);
+        auto it = std::lower_bound(S.begin(), S.end(), s);
+        size_t j = std::clamp<size_t>(std::max<int>(1, int(it - S.begin())), 1, Q.size()-1);
+        float t = (S[j]>S[j-1]) ? (s - S[j-1])/(S[j]-S[j-1]) : 0.f;
+        R.emplace_back(Q[j-1] + t*(Q[j]-Q[j-1]));
+    }
+    return R;
+}
+static void drawPolylineF(cv::Mat& img,
+                          const std::vector<cv::Point2f>& poly,
+                          bool closed,
+                          const cv::Scalar& color,
+                          int thickness=2,
+                          int lineType=cv::LINE_AA)
+{
+    if (poly.size() < 2) return;
+    auto toInt = [](const cv::Point2f& p){ return cv::Point(cvRound(p.x), cvRound(p.y)); };
+    for (size_t i = 1; i < poly.size(); ++i)
+        cv::line(img, toInt(poly[i-1]), toInt(poly[i]), color, thickness, lineType);
+    if (closed)
+        cv::line(img, toInt(poly.back()), toInt(poly.front()), color, thickness, lineType);
+}
+
+struct RadiusStats {
+    float r_min;       // minimum local radius (tightest bend)
+    float r_p05;       // 5th percentile radius (robust tightest bend)
+    float r_median;    // median local radius
+    float r_mean;      // mean of local radii
+    float r_hmean;     // harmonic mean of local radii (averaging curvature)
+    float r_fit;       // global best-fit circle radius (Kåsa)
+    cv::Point2f c_fit; // best-fit circle center
+    int n_samples;     // points used for local stats
+};
+
+
+static bool circumcircleR(const cv::Point2f& A, const cv::Point2f& B, const cv::Point2f& C,
+                          cv::Point2f& center, float& radius)
+{
+    float a2=A.dot(A), b2=B.dot(B), c2=C.dot(C);
+    float d = 2.f*(A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
+    if (std::abs(d) < 1e-8f) return false; // nearly colinear
+    center.x = (a2*(B.y-C.y) + b2*(C.y-A.y) + c2*(A.y-B.y)) / d;
+    center.y = (a2*(C.x-B.x) + b2*(A.x-C.x) + c2*(B.x-A.x)) / d;
+    radius   = cv::norm(center - B);
+    return true;
+}
+
+static bool fitCircleKasa(const std::vector<cv::Point2f>& P, cv::Point2f& C, float& R) {
+    if (P.size() < 3) return false;
+    cv::Mat A(P.size(), 3, CV_64F), b(P.size(), 1, CV_64F);
+    for (int i=0;i<(int)P.size();++i) {
+        double x=P[i].x, y=P[i].y;
+        A.at<double>(i,0)=x; A.at<double>(i,1)=y; A.at<double>(i,2)=1.0;
+        b.at<double>(i,0)=-(x*x + y*y);
+    }
+    cv::Mat sol;
+    if (!cv::solve(A, b, sol, cv::DECOMP_SVD)) return false;
+    double Acoef=sol.at<double>(0), Bcoef=sol.at<double>(1), Ccoef=sol.at<double>(2);
+    double cx = -Acoef/2.0, cy = -Bcoef/2.0;
+    double r2 = cx*cx + cy*cy - Ccoef;
+    if (r2 <= 0) return false;
+    C = cv::Point2f((float)cx,(float)cy);
+    R = (float)std::sqrt(r2);
+    return std::isfinite(R);
+}
+
+template<typename T>
+static T percentile(std::vector<T> v, double p01_to_99) {
+    if (v.empty()) return std::numeric_limits<T>::quiet_NaN();
+    p01_to_99 = std::clamp(p01_to_99, 0.0, 100.0);
+    size_t k = (size_t)std::floor((p01_to_99/100.0) * (v.size()-1));
+    std::nth_element(v.begin(), v.begin()+k, v.end());
+    return v[k];
+}
+
+// local radii via 3-point circumcircle on a uniformly-sampled curve
+static std::vector<float> localRadii(const std::vector<cv::Point2f>& P, float ds=1.0f, int stride=2, bool closed=false) {
+    auto U = resampleByArcLen(P, ds, closed);
+    int n = (int)U.size();
+    if (n < 3) return {};
+    auto idx = [&](int i){ return closed ? ( (i%n+n)%n ) : std::clamp(i,0,n-1); };
+    std::vector<float> R; R.reserve(n);
+    for (int i=0;i<n;++i) {
+        int i0 = idx(i - stride), i2 = idx(i + stride);
+        cv::Point2f c; float r;
+        if (circumcircleR(U[i0], U[i], U[i2], c, r) && std::isfinite(r)) R.push_back(r);
+    }
+    return R;
+}
+
+// ---------- main: stats per polyline ----------
+static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point2f>& poly,
+                                              float ds=1.0f, int stride=2, bool closedFlag=false)
+{
+    bool closed = false;
+    auto Rv = localRadii(poly, ds, stride, closed);
+    // keep finite and cap absurdly huge radii for stats robustness
+    std::vector<float> Rs;
+    Rs.reserve(Rv.size());
+    for (float r : Rv) if (std::isfinite(r)) Rs.push_back(std::min(r, 1e6f));
+
+    RadiusStats S{};
+    S.n_samples = (int)Rs.size();
+    if (!Rs.empty()) {
+        S.r_min    = *std::min_element(Rs.begin(), Rs.end());
+        S.r_p05    = percentile(Rs, 5.0);
+        S.r_median = percentile(Rs, 50.0);
+        S.r_mean   = std::accumulate(Rs.begin(), Rs.end(), 0.0f)/Rs.size();
+
+        // harmonic mean on curvature (average kappa = mean(1/r)), then 1/mean_kappa
+        double sumInv = 0.0;
+        int cntInv = 0;
+        for (float r : Rs) { if (r > 1e-9f){ sumInv += 1.0/r; ++cntInv; } }
+        S.r_hmean = (cntInv>0) ? float(cntInv / sumInv) : std::numeric_limits<float>::infinity();
+    } else {
+        S.r_min=S.r_p05=S.r_median=S.r_mean=S.r_hmean=std::numeric_limits<float>::quiet_NaN();
+    }
+
+    // global circle fit (good if the curve is an arc)
+    fitCircleKasa(poly, S.c_fit, S.r_fit);
+    return S;
+}
+
+// batch version: one stats record per polyline
+static std::vector<RadiusStats> curvatureRadiusForPolylines(const std::vector<std::vector<cv::Point2f>>& polys,
+                                                            float ds=1.0f, int stride=2, bool closed=false)
+{
+    std::vector<RadiusStats> out; out.reserve(polys.size());
+    for (auto& p : polys) out.push_back(curvatureRadiusForPolyline(p, ds, stride, closed));
+    return out;
+}
+
 void LampImageAnalyser::TraceCurves()
 {
+    bool closed = false;        // set true for closed shapes
+
+    cv::Mat temp;
+    cv::cvtColor(*this->currentImageCv, temp, cv::COLOR_GRAY2BGR);
+
+    // // approximation
+    std::vector<std::vector<cv::Point2f>> simples;
+    for (size_t i = 0; i < this->contours.size(); i++)
+    {
+        if (contours[i].size() < 200)
+        {  
+            continue;
+        }
+        int max_y = 0;
+        int end_y = 0;
+        for (auto j = 0; j < contours[i].size(); j++)
+        {
+            if (contours[i][j].y > max_y)
+            {
+                max_y = contours[i][j].y;
+                end_y = j;
+            }
+        }
+        if (end_y < 50)
+        {
+            continue;
+        }
+
+        std::vector<cv::Point2f> simple(contours[i].begin() + 50, contours[i].begin() + end_y - 50);
+        simples.push_back(simple);
+        drawPolylineF(temp, simple, closed, cv::Scalar(0,255,0), 1, cv::LINE_AA);
+    }
+    cv::imshow("smoothed", temp);
+
+    auto stats = curvatureRadiusForPolylines(simples, /*ds=*/1.0f, /*stride=*/3, /*closed=*/false);
+
+    // Example: print per-curve results
+    for (size_t i=0; i<stats.size(); ++i) 
+    {
+        const auto& s = stats[i];
+        qDebug() << "Curve " << i << ": "
+                << "minR=" << s.r_min << ", p05=" << s.r_p05
+                << ", medianR=" << s.r_median << ", meanR=" << s.r_mean
+                << ", harmMeanR=" << s.r_hmean
+                << ", fitR=" << s.r_fit << " @ (" << s.c_fit.x << "," << s.c_fit.y;
+            
+        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y));
+    }
+
+
 
 }
