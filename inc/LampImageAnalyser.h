@@ -15,13 +15,13 @@ public:
     void RunEdgeDetection(QImage& inputImage);
 
     void PaintVertice(const QPointF& imgPt);
-    void PaintCircleCenter(cv::Point point);
 
     void SetCurrentImage(const QImage& image);
 
 signals:
     void ImageProcessed(std::shared_ptr<cv::Mat> img);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
+    void RadiiCalculated(QString radii);
 
 private:
     cv::Mat edgeDetectedImage;
@@ -29,5 +29,6 @@ private:
     std::vector<std::vector<cv::Point>> contours;
 
     static void thresh_callback(int, void* );
-    void TraceCurves();
+    void CalculateRadii();
+    void PaintCircleCenter(cv::Point point, int curveNumber);
 };

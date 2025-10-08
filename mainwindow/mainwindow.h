@@ -18,12 +18,14 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+
 public slots:
     void ShowVerticesDistanceAngle(float distance, float angle);
+    void PrintRadii(QString radii);
 
 private slots:
     void UploadImage();
-    void Deselect();
+    void ResetImageSlot();
 
 private:
     Ui::MainWindow *ui;

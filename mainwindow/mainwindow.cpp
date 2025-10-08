@@ -22,15 +22,17 @@ MainWindow::MainWindow(QWidget *parent)
     this->imgProcessor->SetVisualizationWidget(this->visualisation);
 
     ui->pushButtonDeselect->setEnabled(false);
-    ui->pushButtonEdgeDetect->setEnabled(false);
+    ui->pushButtonCurveAnalysis->setEnabled(false);
     ui->labelDistance->clear();
 
-    connect(ui->pushButtonEdgeDetect, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
+    connect(ui->pushButtonCurveAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
-    connect(ui->pushButtonDeselect, &QPushButton::clicked, this, &MainWindow::Deselect);
+    connect(ui->pushButtonDeselect, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
+    connect(ui->pushButtonReset, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
 
     connect(this->visualisation.get(), &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
+    connect(this->imgProcessor.get(), &ImageProcessor::PrintRadii, this, &MainWindow::PrintRadii);
     
 }
 
@@ -56,17 +58,17 @@ void MainWindow::UploadImage()
     {
         if (this->imgProcessor->UploadImage(fileName))
         {
-            ui->pushButtonEdgeDetect->setEnabled(true);
+            ui->pushButtonCurveAnalysis->setEnabled(true);
             ui->labelDistance->setText("Select two dots to calculate distance");
         }
     }
 }
 
-void MainWindow::Deselect()
+void MainWindow::ResetImageSlot()
 {
     ui->pushButtonDeselect->setEnabled(false);
     ui->labelDistance->setText("Select two dots to calculate distance");
-    this->imgProcessor->ClearVertices();
+    this->imgProcessor->ResetImage();
 
 }
 
@@ -74,4 +76,10 @@ void MainWindow::ShowVerticesDistanceAngle(float distance, float angle)
 {
     ui->labelDistance->setText(QString("Distance: %1 px; Angle: %2°").arg(distance).arg(angle));
     ui->pushButtonDeselect->setEnabled(true);
+}
+
+
+void MainWindow::PrintRadii(QString radii)
+{
+    ui->labelRadii->setText(radii);
 }

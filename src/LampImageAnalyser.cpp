@@ -13,6 +13,17 @@ cv::Mat imgBlur;
 int thresh = 5;
 std::vector<std::vector<cv::Point> > contours;
 
+cv::Scalar colours[] = {
+    cv::Scalar(0, 0, 0), 
+    cv::Scalar(255, 0, 0), 
+    cv::Scalar(255, 0, 255), 
+    cv::Scalar(0, 0, 255),
+    cv::Scalar(10, 255, 0),
+    cv::Scalar(0, 255, 255),
+    cv::Scalar(64, 64, 255),
+    cv::Scalar(255, 128, 128)
+};
+
 void onMouse(int event, int x, int y, int flags, void* userdata)
 {
     if (event == cv::EVENT_LBUTTONDOWN && userdata)
@@ -48,7 +59,7 @@ void LampImageAnalyser::SetCurrentImage(const QImage& image)
     size_t height = image.height();
     size_t stride = image.bytesPerLine();
 
-    *this->currentImageCv = cv::Mat(height, width, CV_8U, buffer, stride);
+    *this->currentImageCv = cv::Mat(height, width, CV_8SC3, buffer, stride);
 }
 
 cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
@@ -78,10 +89,12 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
 
     try
     {
-        cv::Mat img = cv::Mat(height, width, CV_8U, buffer, stride);
+        cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
+        cv::Mat imgGray;
+        cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
         cv::Mat imgBlur;
 
-        cv::blur(img, imgBlur, cv::Size(10,10));
+        cv::blur(imgGray, imgBlur, cv::Size(10,10));
         // SOBEL
         cv::Mat sobelx, sobely, gradient;
         // Apply Sobel operator
@@ -127,22 +140,21 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
         
 
         cv::Mat coloredEdges; 
-        cv::cvtColor(img, coloredEdges, cv::COLOR_GRAY2BGR);
+        cv::cvtColor(imgGray, coloredEdges, cv::COLOR_GRAY2BGR);
 
-        cv::Scalar col(0, 0, 0); // highlight top curves
         for (size_t i = 0; i < this->contours.size(); ++i) 
         {
-            cv::polylines(coloredEdges, this->contours[i], false, col, 1, cv::LINE_AA);
+            cv::polylines(coloredEdges, this->contours[i], false, colours[i], 1, cv::LINE_AA);
         }
-        cv::Mat edgedImageBW;
-        cv::cvtColor(coloredEdges, edgedImageBW, cv::COLOR_BGR2GRAY);
+        //cv::Mat edgedImageBW;
+        //cv::cvtColor(coloredEdges, edgedImageBW, cv::COLOR_BGR2GRAY);
         
         this->edgeDetectedImage = contouredImg;
-        *this->currentImageCv = edgedImageBW;
+        *this->currentImageCv = coloredEdges;
 
         emit ImageProcessed(this->currentImageCv);
 
-        TraceCurves();
+        CalculateRadii();
     }
     catch(const cv::Exception e)
     {
@@ -162,22 +174,23 @@ void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
                 coordinates, 
                 cv::Point(imgPt.x() + 5, imgPt.y() + 5),
                 cv::FONT_HERSHEY_PLAIN,
-                1,
+                0.7,
                 cv::Scalar(255, 0, 0)
     );
     emit ShowVerticeOnImage(this->currentImageCv);
 }
 
-void LampImageAnalyser::PaintCircleCenter(cv::Point point)
+void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber)
 {
-    cv::circle(*this->currentImageCv, point, 3, cv::Scalar(0,255,0), cv::FILLED);
+    cv::circle(*this->currentImageCv, point, 3, colours[curveNumber], cv::FILLED);
     cv::String coordinates = cv::String(std::format("({},{})", point.x, point.y));
+
     cv::putText(*this->currentImageCv, 
                 coordinates, 
-                cv::Point(point.x + 5, point.y),
+                cv::Point(point.x + 5, point.y + 5),
                 cv::FONT_HERSHEY_PLAIN,
                 1,
-                cv::Scalar(255, 0, 0)
+                colours[curveNumber]
     );
     emit ShowVerticeOnImage(this->currentImageCv);
 }
@@ -335,14 +348,12 @@ static std::vector<RadiusStats> curvatureRadiusForPolylines(const std::vector<st
     return out;
 }
 
-void LampImageAnalyser::TraceCurves()
+void LampImageAnalyser::CalculateRadii()
 {
     bool closed = false;        // set true for closed shapes
 
-    cv::Mat temp;
-    cv::cvtColor(*this->currentImageCv, temp, cv::COLOR_GRAY2BGR);
+    cv::Mat temp = *this->currentImageCv;
 
-    // // approximation
     std::vector<std::vector<cv::Point2f>> simples;
     for (size_t i = 0; i < this->contours.size(); i++)
     {
@@ -367,13 +378,14 @@ void LampImageAnalyser::TraceCurves()
 
         std::vector<cv::Point2f> simple(contours[i].begin() + 50, contours[i].begin() + end_y - 50);
         simples.push_back(simple);
-        drawPolylineF(temp, simple, closed, cv::Scalar(0,255,0), 1, cv::LINE_AA);
+        //drawPolylineF(temp, simple, closed, colours[i], 1, cv::LINE_AA);
     }
-    cv::imshow("smoothed", temp);
+    //cv::imshow("smoothed", temp);
 
     auto stats = curvatureRadiusForPolylines(simples, /*ds=*/1.0f, /*stride=*/3, /*closed=*/false);
+    
+    QString radii;
 
-    // Example: print per-curve results
     for (size_t i=0; i<stats.size(); ++i) 
     {
         const auto& s = stats[i];
@@ -382,10 +394,22 @@ void LampImageAnalyser::TraceCurves()
                 << ", medianR=" << s.r_median << ", meanR=" << s.r_mean
                 << ", harmMeanR=" << s.r_hmean
                 << ", fitR=" << s.r_fit << " @ (" << s.c_fit.x << "," << s.c_fit.y;
-            
-        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y));
+         
+        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1);
+
+        std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
+        radii += QString::fromStdString(radius) + "; ";
+        
+        cv::Point coordinates = cv::Point(contours[i][0].x - 50, contours[i][0].y + 20);
+
+        cv::putText(*this->currentImageCv, 
+                cv::String(radius), 
+                coordinates,
+                cv::FONT_HERSHEY_PLAIN,
+                0.8,
+                colours[i]
+        );
+
+        emit RadiiCalculated(radii);
     }
-
-
-
 }

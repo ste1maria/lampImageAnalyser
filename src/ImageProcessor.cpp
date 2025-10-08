@@ -14,6 +14,7 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
 
     connect(this->analyser.get(), &LampImageAnalyser::ShowVerticeOnImage, this, &ImageProcessor::ShowVerticeOnImage);
     connect(this->analyser.get(), &LampImageAnalyser::ImageProcessed, this, &ImageProcessor::ShowEdgedImage);
+    connect(this->analyser.get(), &LampImageAnalyser::RadiiCalculated, this, &ImageProcessor::PrintRadiiSlot);
 }
 
 ImageProcessor::~ImageProcessor()
@@ -37,7 +38,7 @@ bool ImageProcessor::UploadImage(QString fileName)
         return false;
     }
 
-    this->currentImage = image.convertToFormat(QImage::Format_Grayscale8);
+    this->currentImage = image.convertToFormat(QImage::Format_BGR888);
     originalImage = currentImage.copy();
     this->ShowImage(currentImage);
     return true;
@@ -90,7 +91,7 @@ void ImageProcessor::RunEdgeDetectionSlot()
 //     this->analyser->DrawVertices(this->currentImage);
 // }
 
-void ImageProcessor::ClearVertices()
+void ImageProcessor::ResetImage()
 {
     vertex_count = 0;
     currentImage = originalImage.copy();
@@ -125,7 +126,7 @@ void ImageProcessor::PaintVerticeSlot(const QPointF& imgPt)
 
 void ImageProcessor::ShowVerticeOnImage(std::shared_ptr<cv::Mat> img)
 {
-    this->currentImage = QImage(img->data, img->cols, img->rows, img->step, QImage::Format_Grayscale8);
+    this->currentImage = QImage(img->data, img->cols, img->rows, img->step, QImage::Format_BGR888);
     this->ShowImage(this->currentImage);
 }
 
@@ -153,4 +154,9 @@ void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
         QImage::Format_Grayscale8
     );
     this->ShowImage(this->currentImage);
+}
+
+void ImageProcessor::PrintRadiiSlot(QString radii)
+{
+    emit PrintRadii(radii);
 }

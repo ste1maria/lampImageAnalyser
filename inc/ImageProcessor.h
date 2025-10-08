@@ -19,12 +19,12 @@ public:
 
     void SetVisualizationWidget(std::shared_ptr<GLVisualisation> visWidget);
     bool UploadImage(QString fileName);
-    void ClearVertices();
+    void ResetImage();
 
 
 signals:
     void DistanceCalculated(float distance, float angle);
-
+    void PrintRadii(QString radii);
 
 public slots:
     void SaveCalculations();
@@ -33,6 +33,7 @@ public slots:
     void PaintVerticeSlot(const QPointF& imgPt);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
     void ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage);
+    void PrintRadiiSlot(QString radii);
 
 private:
     MainWindow *mainWindow;
