@@ -126,7 +126,9 @@ void ImageProcessor::PaintVerticeSlot(const QPointF& imgPt)
 
 void ImageProcessor::ShowVerticeOnImage(std::shared_ptr<cv::Mat> img)
 {
-    this->currentImage = QImage(img->data, img->cols, img->rows, img->step, QImage::Format_BGR888);
+    cv::Mat bgr = img->clone();
+    QImage qi(bgr.data, bgr.cols, bgr.rows, bgr.step, QImage::Format_BGR888);
+    this->currentImage = qi.copy();        // <- make QImage own memory
     this->ShowImage(this->currentImage);
 }
 

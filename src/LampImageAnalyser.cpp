@@ -54,12 +54,9 @@ LampImageAnalyser::LampImageAnalyser()
 
 void LampImageAnalyser::SetCurrentImage(const QImage& image)
 {
-    uint8_t * buffer = (uint8_t*)image.bits();
-    size_t width = image.width();
-    size_t height = image.height();
-    size_t stride = image.bytesPerLine();
-
-    *this->currentImageCv = cv::Mat(height, width, CV_8SC3, buffer, stride);
+    cv::Mat view(image.height(), image.width(), CV_8UC3,
+                 const_cast<uchar*>(image.bits()), image.bytesPerLine());
+    *this->currentImageCv = view.clone(); 
 }
 
 cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
@@ -168,21 +165,34 @@ void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
 
 void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
 {
-    cv::drawMarker(*this->currentImageCv, cv::Point(imgPt.x(), imgPt.y()), cv::Scalar(255,255,255), cv::FILLED);
+    cv::Mat drawn = this->currentImageCv->clone();
+
+    cv::drawMarker(
+        drawn,
+        cv::Point(cvRound(imgPt.x()), cvRound(imgPt.y())),
+        cv::Scalar(255,255,255),
+        cv::MARKER_CROSS,   // <- use a valid marker type
+        10,                 // markerSize
+        1                   // thickness
+    );
+    
     cv::String coordinates = cv::String(std::format("({},{})", imgPt.x(), imgPt.y()));
-    cv::putText(*this->currentImageCv, 
+    cv::putText(drawn, 
                 coordinates, 
                 cv::Point(imgPt.x() + 5, imgPt.y() + 5),
                 cv::FONT_HERSHEY_PLAIN,
-                0.7,
+                0.9,
                 cv::Scalar(255, 0, 0)
     );
+
+    *this->currentImageCv = std::move(drawn);
+
     emit ShowVerticeOnImage(this->currentImageCv);
 }
 
-void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber)
+void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col)
 {
-    cv::circle(*this->currentImageCv, point, 3, colours[curveNumber], cv::FILLED);
+    cv::circle(*this->currentImageCv, point, 3, col, cv::FILLED);
     cv::String coordinates = cv::String(std::format("({},{})", point.x, point.y));
 
     cv::putText(*this->currentImageCv, 
@@ -190,7 +200,7 @@ void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber)
                 cv::Point(point.x + 5, point.y + 5),
                 cv::FONT_HERSHEY_PLAIN,
                 1,
-                colours[curveNumber]
+               col
     );
     emit ShowVerticeOnImage(this->currentImageCv);
 }
@@ -355,6 +365,7 @@ void LampImageAnalyser::CalculateRadii()
     cv::Mat temp = *this->currentImageCv;
 
     std::vector<std::vector<cv::Point2f>> simples;
+    std::vector<int>colour_indices;
     for (size_t i = 0; i < this->contours.size(); i++)
     {
         if (contours[i].size() < 200)
@@ -371,11 +382,12 @@ void LampImageAnalyser::CalculateRadii()
                 end_y = j;
             }
         }
-        if (end_y < 50)
+        if (end_y < 100)
         {
             continue;
         }
 
+        colour_indices.push_back(i);
         std::vector<cv::Point2f> simple(contours[i].begin() + 50, contours[i].begin() + end_y - 50);
         simples.push_back(simple);
         //drawPolylineF(temp, simple, closed, colours[i], 1, cv::LINE_AA);
@@ -389,13 +401,7 @@ void LampImageAnalyser::CalculateRadii()
     for (size_t i=0; i<stats.size(); ++i) 
     {
         const auto& s = stats[i];
-        qDebug() << "Curve " << i << ": "
-                << "minR=" << s.r_min << ", p05=" << s.r_p05
-                << ", medianR=" << s.r_median << ", meanR=" << s.r_mean
-                << ", harmMeanR=" << s.r_hmean
-                << ", fitR=" << s.r_fit << " @ (" << s.c_fit.x << "," << s.c_fit.y;
-         
-        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1);
+        qDebug() << "Curve " << i << ": fitR=" << s.r_fit << " @ (" << s.c_fit.x << "," << s.c_fit.y;
 
         std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
         radii += QString::fromStdString(radius) + "; ";
@@ -407,9 +413,11 @@ void LampImageAnalyser::CalculateRadii()
                 coordinates,
                 cv::FONT_HERSHEY_PLAIN,
                 0.8,
-                colours[i]
+                colours[colour_indices[i]]
         );
 
-        emit RadiiCalculated(radii);
+        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[colour_indices[i]]);
     }
+    
+    emit RadiiCalculated(radii);
 }

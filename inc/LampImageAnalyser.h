@@ -30,5 +30,5 @@ private:
 
     static void thresh_callback(int, void* );
     void CalculateRadii();
-    void PaintCircleCenter(cv::Point point, int curveNumber);
+    void PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col);
 };
