@@ -42,7 +42,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::UploadImage()
 {
-    QString filter = "Images (*.png *.bmp *.raw)";
+    QString filter = "Image files (*.png *.jpg)";
     QString fileName = QFileDialog::getOpenFileName(
         this,                   // parent
         "Open Image",           // dialog title

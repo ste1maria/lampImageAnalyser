@@ -98,6 +98,20 @@
                 "traceResponse": false
             },
             "preLaunchTask": "Log Environment Variables"  // Add this line
-        }
+        },
+ {
+            "name": "(gdb) Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/windows-release/LampAnalyser",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [
+                {"name": "QT_OPENGL", "value" : "software"},
+                {"name" : "QT_DEBUG_PLUGINS", "value" : "1"}
+            ],
+            "console" :"externalTerminal"
+        },
     ]
 }

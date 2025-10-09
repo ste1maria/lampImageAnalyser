@@ -22,7 +22,7 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": true,
         "Qt6_DIR": "C:/Qt/Qt-6.9.0/lib/cmake/Qt6",
         "CMAKE_PREFIX_PATH": "C:/Qt/Qt-6.9.0/lib/cmake",
-        "OpenCV_DIR": "C:/opencv/build/x64/vc16/lib"
+        "OpenCV_DIR": "C:/opencv/x64/vc17/lib"
       }
     },
     {

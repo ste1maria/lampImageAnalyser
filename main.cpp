@@ -11,14 +11,17 @@
 
 int main(int argc, char *argv[])
 {
-    QSurfaceFormat fmt;
-    fmt.setRenderableType(QSurfaceFormat::OpenGL);
-    fmt.setProfile(QSurfaceFormat::CoreProfile);
-    fmt.setVersion(3, 3);
+
+    QCoreApplication::setAttribute(Qt::AA_UseSoftwareOpenGL);
     // Optional: fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     // Optional: fmt.setSwapInterval(1); // vsync
-    QSurfaceFormat::setDefaultFormat(fmt);
 
+    QSurfaceFormat fmt;
+    fmt.setRenderableType(QSurfaceFormat::OpenGL);
+    fmt.setProfile(QSurfaceFormat::CoreProfile); // GL core
+    fmt.setVersion(3, 0);                        // GL 3.0 core
+    QSurfaceFormat::setDefaultFormat(fmt);
+    
     QApplication a(argc, argv);
     MainWindow w;
     w.show();

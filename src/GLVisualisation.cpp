@@ -4,24 +4,24 @@
 
 
 static const char* kVertexSrc = R"(
-#version 330 core
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aUV;
-out vec2 vUV;
-uniform mat4 uMvp;
+#version 130
+in vec2 pos;
+in vec2 uv;
+uniform mat4 uMvp;      // matches your C++
+out vec2 v_uv;
 void main() {
-    vUV = aUV;
-    gl_Position = uMvp * vec4(aPos, 0.0, 1.0);
+    v_uv = uv;
+    gl_Position = uMvp * vec4(pos, 0.0, 1.0);
 }
 )";
 
 static const char* kFragmentSrc = R"(
-#version 330 core
-in vec2 vUV;
+#version 130
+in vec2 v_uv;
+uniform sampler2D uTex; // matches your C++
 out vec4 fragColor;
-uniform sampler2D uTex;
 void main() {
-    fragColor = texture(uTex, vUV);
+    fragColor = texture(uTex, v_uv); // GLSL 1.30 uses texture()
 }
 )";
 
@@ -56,16 +56,22 @@ void GLVisualisation::initializeGL()
     initializeOpenGLFunctions();
     glClearColor(0.f, 0.f, 0.f, 1.f);
 
-    // Shaders
-    if (!program_.addShaderFromSourceCode(QOpenGLShader::Vertex, kVertexSrc) ||
-        !program_.addShaderFromSourceCode(QOpenGLShader::Fragment, kFragmentSrc) ||
-        !program_.link()) {
-        qFatal("Failed to compile/link shader program: %s", program_.log().toUtf8().constData());
+    if (!program_.addShaderFromSourceCode(QOpenGLShader::Vertex,   kVertexSrc) ||
+        !program_.addShaderFromSourceCode(QOpenGLShader::Fragment, kFragmentSrc)) 
+    {
+        qFatal("Shader compile error: %s", program_.log().toUtf8().constData());
+    }
+    program_.bindAttributeLocation("pos", 0);
+    program_.bindAttributeLocation("uv",  1);
+    if (!program_.link()) 
+    {
+        qFatal("Link error: %s", program_.log().toUtf8().constData());
     }
 
     // Fullscreen quad (NDC), with UVs
     // aPos (x,y), aUV (u,v)
-    const float quad[] = {
+    const float quad[] = 
+    {
         //   x     y     u     v
         -1.f, -1.f,  0.f, 0.f,
          1.f, -1.f,  1.f, 0.f,
@@ -93,7 +99,8 @@ void GLVisualisation::initializeGL()
 
 void GLVisualisation::resizeGL(int w, int h)
 {
-    glViewport(0, 0, w, h);
+    float dpr = devicePixelRatioF();  // important on Windows/HiDPI
+    glViewport(0, 0, int(w * dpr), int(h * dpr));
 }
 
 void GLVisualisation::ensureTexture() {
@@ -135,21 +142,27 @@ void GLVisualisation::ensureTexture() {
 
 void GLVisualisation::paintGL()
 {
+     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
     glClear(GL_COLOR_BUFFER_BIT);
 
     ensureTexture();
     if (!texture_) return;
 
-    // Just identity matrix — fill the widget completely
-    QMatrix4x4 mvp; 
-    mvp.setToIdentity();
+    // Identity MVP is fine for NDC quad
+    QMatrix4x4 mvp; mvp.setToIdentity();
 
     program_.bind();
+
+    // Uniforms — ensure locations are valid (>=0)
     program_.setUniformValue("uMvp", mvp);
     program_.setUniformValue("uTex", 0);
 
     glActiveTexture(GL_TEXTURE0);
-    texture_->bind();
+    texture_->bind();               // QOpenGLTexture (GL_TEXTURE_2D)
+    // (Set filters/wrap once at creation)
+    // texture_->setMinMagFilters(QOpenGLTexture::Linear, QOpenGLTexture::Linear);
+    // texture_->setWrapMode(QOpenGLTexture::ClampToEdge);
 
     vao_.bind();
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -158,8 +171,9 @@ void GLVisualisation::paintGL()
     texture_->release();
     program_.release();
 
-    imgW_ = texture_->width(); 
+    imgW_ = texture_->width();
     imgH_ = texture_->height();
+
 }
 
 void GLVisualisation::ShowImage(const QImage &image)
