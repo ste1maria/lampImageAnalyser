@@ -8,6 +8,8 @@
 #include <QFileDialog>
 #include <opencv2/core/cvstd.hpp>
 #include <opencv2/ximgproc.hpp>
+#include "curveAnalysis.hpp"
+#include "doubleCurve.hpp"
 
 cv::Mat imgBlur;
 int thresh = 5;
@@ -358,11 +360,51 @@ static std::vector<RadiusStats> curvatureRadiusForPolylines(const std::vector<st
     return out;
 }
 
+
+typedef enum 
+{
+    RIGHT,
+    LEFT,
+    AMBIG
+} Orientation;
+
+// to find the apex
+int findApex(std::vector<cv::Point> &curve, Orientation orientation)
+{
+    int max_x = 0;
+    int min_x = 10000;
+    int apexIndex = 0;
+    if (orientation == Orientation::AMBIG)
+    {
+        return 0;
+    }
+    for (size_t i = 0; i < curve.size(); i++)
+    {
+        if (orientation == Orientation::RIGHT)
+        {
+            if (curve[i].x <= min_x)
+            {
+                min_x = curve[i].x;
+                apexIndex = i;
+            }
+        }
+        else if (orientation == Orientation::LEFT)
+        {
+            if (curve[i].x >= max_x)
+            {
+                max_x = curve[i].x;
+                apexIndex = i;
+            }
+        }
+    }
+    return apexIndex;
+}
+
 void LampImageAnalyser::CalculateRadii()
 {
     bool closed = false;        // set true for closed shapes
 
-    cv::Mat temp = *this->currentImageCv;
+    //cv::Mat temp = this->currentImageCv->clone();
 
     std::vector<std::vector<cv::Point2f>> simples;
     std::vector<int>colour_indices;
@@ -372,25 +414,26 @@ void LampImageAnalyser::CalculateRadii()
         {  
             continue;
         }
-        int max_y = 0;
-        int end_y = 0;
-        for (auto j = 0; j < contours[i].size(); j++)
-        {
-            if (contours[i][j].y > max_y)
-            {
-                max_y = contours[i][j].y;
-                end_y = j;
-            }
-        }
-        if (end_y < 100)
-        {
-            continue;
-        }
+        std::vector<cv::Point> contour = contours[i];
+
+        std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
+            return a.y < b.y;
+        });
+        
+        OpeningResult r = detectOpeningLR(contour);
+        Orientation orient =  (r.opening == OpeningLR::Left ? Orientation::LEFT :
+                        r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
+
+        int apexIdx = findApex(contour, orient);
+
+        // only leave 70% from the curve centered at the apex
+        int index_begin = apexIdx - apexIdx*0.35;
+        int index_end = apexIdx + (contour.size() - apexIdx)*0.35;
 
         colour_indices.push_back(i);
-        std::vector<cv::Point2f> simple(contours[i].begin() + 50, contours[i].begin() + end_y - 50);
+        std::vector<cv::Point2f> simple(contour.begin() + index_begin, contour.begin() + index_end);
         simples.push_back(simple);
-        //drawPolylineF(temp, simple, closed, colours[i], 1, cv::LINE_AA);
+        //drawPolylineF(temp, simple, closed, colours[i+1], 2, cv::LINE_AA);
     }
     //cv::imshow("smoothed", temp);
 
