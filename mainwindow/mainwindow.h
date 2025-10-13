@@ -22,6 +22,7 @@ public:
 public slots:
     void ShowVerticesDistanceAngle(float distance, float angle);
     void PrintRadii(QString radii);
+    void PrintFullResultsSlot(ResultsType results);
 
 private slots:
     void UploadImage();

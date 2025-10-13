@@ -9,6 +9,13 @@ class MainWindow;
 class GLVisualisation;
 class LampImageAnalyser;
 
+typedef struct 
+{
+    std::vector<QString> radii;
+    std::vector<QString> thickness;
+    QString electrodesDist;
+} ResultsType;
+
 class ImageProcessor : public QObject
 {
     Q_OBJECT
@@ -21,10 +28,10 @@ public:
     bool UploadImage(QString fileName);
     void ResetImage();
 
-
 signals:
     void DistanceCalculated(float distance, float angle);
     void PrintRadii(QString radii);
+    void PrintFullResults(ResultsType results);
 
 public slots:
     void SaveCalculations();
@@ -34,6 +41,8 @@ public slots:
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
     void ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage);
     void PrintRadiiSlot(QString radii);
+    void RunFullAnalysis();
+    void ProcessElectrodesSlot();
 
 private:
     MainWindow *mainWindow;
@@ -45,6 +54,5 @@ private:
     QPair<QPointF, QPointF> vertices;
     int vertex_count = 0;
 
-    QPair<float, float> CalculateDistanceAngle();
     void ShowImage(const QImage& image);
 };

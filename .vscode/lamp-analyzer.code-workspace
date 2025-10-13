@@ -71,7 +71,8 @@
 			"qobject": "cpp",
 			"qmutex": "cpp",
 			"qmainwindow": "cpp",
-			"deque": "cpp"
+			"deque": "cpp",
+			"unordered_set": "cpp"
 		}
 	}
 }

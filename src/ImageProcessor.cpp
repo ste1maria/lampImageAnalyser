@@ -83,7 +83,7 @@ void ImageProcessor::SaveCalculations()
 
 void ImageProcessor::RunEdgeDetectionSlot()
 {
-    this->analyser->RunEdgeDetection(this->currentImage); 
+    this->analyser->ProcessLampWalls(this->currentImage); 
 }
 
 // void ImageProcessor::FindVerticesSlot()
@@ -117,7 +117,7 @@ void ImageProcessor::PaintVerticeSlot(const QPointF& imgPt)
     if (vertex_count == 2)
     {
         // calculate distance
-        QPair<float, float> result = this->CalculateDistanceAngle();
+        QPair<float, float> result = this->analyser->CalculateDistanceAngle(vertices.first, vertices.second);
         float distance = result.first;
         float angle = result.second;
         emit DistanceCalculated(distance, angle);
@@ -132,20 +132,6 @@ void ImageProcessor::ShowVerticeOnImage(std::shared_ptr<cv::Mat> img)
     this->ShowImage(this->currentImage);
 }
 
-QPair<float, float> ImageProcessor::CalculateDistanceAngle()
-{
-    float distance = sqrt( pow((vertices.second.x() - vertices.first.x()), 2) +
-                           pow((vertices.second.y() - vertices.first.y()), 2)
-                        );
-    QLineF line(vertices.first, vertices.second);
-    double angle = std::abs(90.0 - line.angle());
-    if (angle > 90) 
-    {
-        angle = 180.0 - angle;
-    }
-
-    return QPair(distance, angle);
-}
 
 void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
 {
@@ -161,4 +147,19 @@ void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
 void ImageProcessor::PrintRadiiSlot(QString radii)
 {
     emit PrintRadii(radii);
+}
+
+void ImageProcessor::RunFullAnalysis()
+{
+    // find electrodes distance
+    
+    // find curve radii
+
+    // find wall thickness
+    // convert to mm
+}
+
+void ImageProcessor::ProcessElectrodesSlot()
+{
+    this->analyser->ProcessElectrodes(this->currentImage);
 }

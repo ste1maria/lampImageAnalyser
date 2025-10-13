@@ -9,11 +9,10 @@
 #include <opencv2/core/cvstd.hpp>
 #include <opencv2/ximgproc.hpp>
 #include "curveAnalysis.hpp"
-#include "doubleCurve.hpp"
 
-cv::Mat imgBlur;
+#include <unordered_set>
+
 int thresh = 5;
-std::vector<std::vector<cv::Point> > contours;
 
 cv::Scalar colours[] = {
     cv::Scalar(0, 0, 0), 
@@ -79,7 +78,7 @@ cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
     return skel;
 }
 
-void LampImageAnalyser::RunEdgeDetection(QImage& inputImage)
+void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
 {
     uint8_t * buffer = (uint8_t*)inputImage.bits();
     size_t width = inputImage.width();
@@ -463,4 +462,279 @@ void LampImageAnalyser::CalculateRadii()
     }
     
     emit RadiiCalculated(radii);
+}
+
+// Signed turn: left turn +, right turn -, range (-180, 180]
+double turnAngleDeg(const cv::Point2f& v1, const cv::Point2f& v2) {
+    double dot = v1.dot(v2);
+    double det = v1.x * v2.y - v1.y * v2.x;     // z-component of 2D cross
+    return std::atan2(det, dot) * 180.0 / CV_PI;
+}
+
+// Interior angle between segments (0..180)
+double interiorAngleDeg(const cv::Point2f& v1, const cv::Point2f& v2) {
+    double turn = turnAngleDeg(v1, v2);
+    double interior = 180.0 - std::fabs(turn);
+    // numeric guard
+    if (interior < 0)   interior = 0;
+    if (interior > 180) interior = 180;
+    return interior;
+}
+
+// Helper to compute angle between two vectors
+double angleBetween(const cv::Point2f& v1, const cv::Point2f& v2) {
+    double dot = v1.dot(v2);
+    double det = v1.x * v2.y - v1.y * v2.x;
+    double angle = std::atan2(det, dot); // radians
+    return angle * 180.0 / CV_PI;        // degrees
+}
+
+cv::Point FindMinMaxPoint(const std::vector<cv::Point> & vector, bool isMax, bool isX)
+{
+    cv::Point result;
+    std::vector<cv::Point>::const_iterator it;
+    if (isMax)
+    {
+        it = std::max_element(vector.begin(), vector.end(),
+            [isX](const cv::Point& a, const cv::Point& b) {
+                return isX ? (a.x < b.x) : (a.y < b.y);
+            });
+    }
+    else 
+    {
+        it = std::min_element(vector.begin(), vector.end(),
+            [isX](const cv::Point& a, const cv::Point& b) {
+                return isX ? (a.x < b.x) : (a.y < b.y);
+            });
+    }
+    result = *it;
+    return result;
+}
+
+ApexSanityResult ApexSanityCheck
+(
+    const std::vector<cv::Point> &shape,
+    cv::Point apex, 
+    int imgHeight
+)
+{
+    ApexSanityResult result = ApexSanityResult::APEX_OK;
+
+    if (shape.empty())
+    {
+        return APEX_ERR_EMPTY_VECTOR;
+    }
+
+    // determine orientation
+
+    double dy = static_cast<double>(apex.y) - static_cast<double>(shape.front().y);
+    if (dy == 0)
+    {
+        dy = static_cast<double>(apex.y) - static_cast<double>(shape.back().y);
+    }
+    if (dy == 0)
+    {
+        return APEX_ERR_FAULTY_CONTOUR;
+    }
+
+    auto findMinMaxYAtX = [](const std::vector<cv::Point>& pts, int x, bool isUpright) -> std::optional<cv::Point> {
+        std::optional<cv::Point> best;
+        for (const auto& p : pts) {
+            if (p.x == x) {
+                if ((isUpright && (!best || p.y > best->y)) // base has larger Y coordinates, almost max
+                || (!isUpright && (!best || p.y < best->y))) // base has smaller Y coordinates, almost 0
+                {
+                    best = p;
+                }
+            }
+        }
+        return best; // empty if no point with that x found
+    };
+
+    // really hard to find the base vertices
+    int left_x, right_x;
+    left_x = FindMinMaxPoint(shape, false, true).x;
+    right_x = FindMinMaxPoint(shape, true, true).x;
+
+    bool isShapeUpright = dy > 0 ? false : true;
+    cv::Point left = cv::Point(left_x, findMinMaxYAtX(shape, left_x, isShapeUpright)->y);
+    cv::Point right = cv::Point(right_x, findMinMaxYAtX(shape, right_x, isShapeUpright)->y);
+
+    // Base is wide enough?
+    cv::Point QR = right - left;
+    double L2 = QR.dot(QR);
+    if (L2 <= 10) // i know, magic number... 10 pix is actually too thin, baby
+    {
+        result = ApexSanityResult::APEX_ERR_CONTOUR_TOO_THIN;
+    }
+
+    if (result == ApexSanityResult::APEX_OK)
+    {
+        // apex projects on X axis on the base line?
+        if (((apex.x < right.x) && (apex.x < left.x))
+            || ((apex.x > right.x) && (apex.x > left.x)))
+        {
+            result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
+        }
+
+         if (result == ApexSanityResult::APEX_OK)
+        {
+            // determine the extremum - the actual apex
+            cv::Point extremum;
+            if (dy > 0) // apex lower than "leg" => apex at the max y of the vector, electrode upside down
+            {
+                auto it = std::max_element(shape.begin(), shape.end(),
+                            [](const cv::Point& a, const cv::Point& b) {
+                                return a.y < b.y;   // compare by Y coordinate
+                            });
+                extremum = *it;
+            }
+            else if (dy < 0) // apex higher than "leg" => apex at the min y of the vector, electrode upright
+            {
+                auto it = std::min_element(shape.begin(), shape.end(),
+                            [](const cv::Point& a, const cv::Point& b) {
+                                return a.y < b.y;   // compare by Y coordinate
+                            });
+                extremum = *it;
+            }
+            
+            int amplitude = std::max(std::abs(shape.front().y - extremum.y), std::abs(shape.back().y - extremum.y));
+            // apex close to max/min of the polyline ? 
+            // choosing between 1/3(imgHeight) or contour amplitude because the contour might be too short after approximation
+            double tolerance = std::max(amplitude, static_cast<int>(imgHeight*0.33)) * 0.03; // 3 percent from either amplitude or 1/3(img height)
+            if (cv::norm(extremum - apex) > tolerance)
+            {
+                result = ApexSanityResult::APEX_ERR_APEX_FAR;
+            }
+        }
+    }
+    
+    return result;
+}
+
+void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
+{
+    uint8_t * buffer = (uint8_t*)inputImage.bits();
+    size_t width = inputImage.width();
+    size_t height = inputImage.height();
+    size_t stride = inputImage.bytesPerLine();
+
+    try
+    {
+        cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
+
+        cv::Mat imgGray;
+        cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
+
+        cv::Mat imgBlur;
+        cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.2);
+
+        cv::Mat cannyImg;
+        cv::Canny(imgBlur, cannyImg, 0, 100);
+
+        // TRACING
+        cv::Mat toTrace = cannyImg.clone();
+        this->electrodes.clear();
+        cv::findContours(toTrace, this->electrodes, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+        std::sort(this->electrodes.begin(), this->electrodes.end(),
+              [](auto &a, auto &b){ return a.size() > b.size(); });
+        
+        cv::Mat coloredEdges; 
+        cv::cvtColor(imgGray, coloredEdges, cv::COLOR_GRAY2BGR);
+
+        // find vertices
+        std::vector<cv::Point> apexesVect;
+        for (auto electrode : this->electrodes) 
+        {
+            // Approximate polyline with straight segments
+            std::vector<cv::Point> approx;
+            double epsilon = 10.0; // Approximation accuracy
+            cv::approxPolyDP(electrode, approx, epsilon, false);
+
+            // Find angles between consecutive segments
+            double smallestAngle = 180.0;
+            cv::Point apex(0,0);
+            for (size_t i = 1; i + 1 < approx.size(); ++i) {
+                // Build direction vectors along the two adjacent segments
+                cv::Point2f v1 = cv::Point2f(approx[i].x - approx[i-1].x,
+                                            approx[i].y - approx[i-1].y);
+                cv::Point2f v2 = cv::Point2f(approx[i+1].x - approx[i].x,
+                                            approx[i+1].y - approx[i].y);
+
+                // Optional: ignore tiny/degenerate segments to avoid noisy angles
+                if (cv::norm(v1) < 1e-6 || cv::norm(v2) < 1e-6) continue;
+
+                double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
+                if (interior_deg < smallestAngle && interior_deg > 5.0)
+                {
+                    smallestAngle = interior_deg;
+                    apex = approx[i];
+
+                }
+            }
+
+            // sanity check
+            std::vector<cv::Point> approx_sorted = approx;
+            // sometimes the contours have double segments or go back and forth
+            std::sort(approx_sorted.begin(), approx_sorted.end(), [](const cv::Point& a, const cv::Point& b) {
+                return a.x < b.x;
+            });
+            ApexSanityResult isApexOk = ApexSanityCheck(approx_sorted, apex, imgGray.rows);
+            if (isApexOk == ApexSanityResult::APEX_OK)
+            {
+                apexesVect.push_back(apex);
+            }
+        }
+
+        if (apexesVect.empty())
+        {
+            //emit ElectrodesAnalysisFailed();
+            return;
+        }
+
+        for (cv::Point ap : apexesVect)
+        {
+            cv::circle(coloredEdges, ap, 3, cv::Scalar(0, 0, 255));
+        }
+        cv::imshow("Apexes", coloredEdges);
+
+        QPair<cv::Point, cv::Point> apexes;
+        if (apexesVect.size() > 2)
+        {
+            // TODO: remove extra apexes
+        }
+        else
+        {
+            apexes.first = apexesVect[0];
+            apexes.second = apexesVect[1];
+        }
+        
+        auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
+        qDebug() << "distance" << distance << "angle" << angle;
+    }
+    catch(...)
+    {
+        qDebug() << "Exception while processing electrodes";
+    }
+
+}
+
+QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(cv::Point start, cv::Point end)
+{
+    return CalculateDistanceAngle(QPointF(start.x, start.y), QPointF(end.x, end.y));
+}
+
+QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPointF end)
+{
+    float distance = sqrt( pow((end.x() - start.x()), 2) +
+                           pow((end.y() - start.y()), 2)
+                        );
+    QLineF line(start, end);
+    double angle = std::abs(90.0 - line.angle());
+    if (angle > 90) 
+    {
+        angle = 180.0 - angle;
+    }
+
+    return QPair(distance, angle);
 }
