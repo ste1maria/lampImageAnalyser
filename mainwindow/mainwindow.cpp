@@ -37,6 +37,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(this->visualisation.get(), &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
     connect(this->imgProcessor.get(), &ImageProcessor::PrintRadii, this, &MainWindow::PrintRadii);
+    connect(this->imgProcessor.get(), &ImageProcessor::AnalysisFailed, this, &MainWindow::AnalysisFailedSlot);
     
 }
 
@@ -94,4 +95,28 @@ void MainWindow::PrintFullResultsSlot(ResultsType results)
 {
     QString resultsString;
     resultsString += QString("Radius 1 \t ");
+}
+
+void MainWindow::AnalysisFailedSlot(AnalysisFailure failure)
+{
+    QMessageBox failureMessage;
+    QString messageText = "unknown error, sorry";
+    if (failure == AnalysisFailure::FAILURE_IMG_TOO_SMALL)
+    {
+        ui->pushButtonCurveAnalysis->setEnabled(false);
+        ui->pushButtonRunAnalysis->setEnabled(false);
+        ui->pushButtonElectrodes->setEnabled(false);
+        ui->labelDistance->clear();
+        messageText = "Uploaded image is too small for correct analysis.";
+    }
+    else if (failure == AnalysisFailure::FAILURE_ELECTRODES)
+    {
+        messageText = "Failed to recognise electrodes shapes. Try uploading different image.";
+    }
+    else if (failure == AnalysisFailure::FAILURE_LAMP_CONTOURS)
+    {
+        messageText = "Failed to recognise lamp or lamp walls contours. Try uploading different image.";
+    }
+    failureMessage.setText(messageText);
+    failureMessage.exec();
 }

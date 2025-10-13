@@ -27,6 +27,7 @@ public slots:
 private slots:
     void UploadImage();
     void ResetImageSlot();
+    void AnalysisFailedSlot(AnalysisFailure failure);
 
 private:
     Ui::MainWindow *ui;

@@ -644,6 +644,7 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 
         // find vertices
         std::vector<cv::Point> apexesVect;
+        ApexSanityResult apexError = ApexSanityResult::APEX_OK;
         for (auto electrode : this->electrodes) 
         {
             // Approximate polyline with straight segments
@@ -652,8 +653,9 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
             cv::approxPolyDP(electrode, approx, epsilon, false);
 
             // Find angles between consecutive segments
-            double smallestAngle = 180.0;
+            double smallestAngle = 45;
             cv::Point apex(0,0);
+
             for (size_t i = 1; i + 1 < approx.size(); ++i) {
                 // Build direction vectors along the two adjacent segments
                 cv::Point2f v1 = cv::Point2f(approx[i].x - approx[i-1].x,
@@ -672,6 +674,11 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 
                 }
             }
+            // the apex is not sharp enough
+            if (apex.x == 0 && apex.y == 0)
+            {
+                continue;
+            }
 
             // sanity check
             std::vector<cv::Point> approx_sorted = approx;
@@ -680,15 +687,21 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
                 return a.x < b.x;
             });
             ApexSanityResult isApexOk = ApexSanityCheck(approx_sorted, apex, imgGray.rows);
+            
             if (isApexOk == ApexSanityResult::APEX_OK)
             {
                 apexesVect.push_back(apex);
             }
+            else
+            {
+                apexError = isApexOk;
+                break;
+            }
         }
 
-        if (apexesVect.empty())
+        if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
         {
-            //emit ElectrodesAnalysisFailed();
+            emit ElectrodesAnalysisFailed();
             return;
         }
 

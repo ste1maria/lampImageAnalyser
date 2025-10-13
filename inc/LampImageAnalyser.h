@@ -37,6 +37,7 @@ signals:
     void ImageProcessed(std::shared_ptr<cv::Mat> img);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
     void RadiiCalculated(QString radii);
+    void ElectrodesAnalysisFailed();
 
 private:
     cv::Mat edgeDetectedImage;

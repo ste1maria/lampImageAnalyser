@@ -15,6 +15,7 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     connect(this->analyser.get(), &LampImageAnalyser::ShowVerticeOnImage, this, &ImageProcessor::ShowVerticeOnImage);
     connect(this->analyser.get(), &LampImageAnalyser::ImageProcessed, this, &ImageProcessor::ShowEdgedImage);
     connect(this->analyser.get(), &LampImageAnalyser::RadiiCalculated, this, &ImageProcessor::PrintRadiiSlot);
+    connect(this->analyser.get(), &LampImageAnalyser::ElectrodesAnalysisFailed, this, &ImageProcessor::ElectrodesProcessingFail);
 }
 
 ImageProcessor::~ImageProcessor()
@@ -26,8 +27,14 @@ void ImageProcessor::SetVisualizationWidget(std::shared_ptr<GLVisualisation> vis
     this->visualization = visWidget;
 }
 
+bool ImageProcessor::IsImagePresent()
+{
+    return imageUploaded;
+}
+
 bool ImageProcessor::UploadImage(QString fileName)
 {
+    bool success = true;
 
     QImage image(fileName);
     if (image.isNull()) 
@@ -37,11 +44,16 @@ bool ImageProcessor::UploadImage(QString fileName)
         warningBox.exec();
         return false;
     }
-
+    if (image.height() < 400 && image.width() < 600)
+    {
+        emit AnalysisFailed(AnalysisFailure::FAILURE_IMG_TOO_SMALL);
+        success = false;
+    }
     this->currentImage = image.convertToFormat(QImage::Format_BGR888);
     originalImage = currentImage.copy();
     this->ShowImage(currentImage);
-    return true;
+
+    return success;
 }
 
 void ImageProcessor::ShowImage(const QImage& image)
@@ -162,4 +174,10 @@ void ImageProcessor::RunFullAnalysis()
 void ImageProcessor::ProcessElectrodesSlot()
 {
     this->analyser->ProcessElectrodes(this->currentImage);
+}
+
+void ImageProcessor::ElectrodesProcessingFail()
+{
+    this->ResetImage();
+    emit AnalysisFailed(AnalysisFailure::FAILURE_ELECTRODES);
 }

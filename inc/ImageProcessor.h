@@ -16,6 +16,14 @@ typedef struct
     QString electrodesDist;
 } ResultsType;
 
+
+typedef enum
+{
+    FAILURE_IMG_TOO_SMALL,
+    FAILURE_ELECTRODES,
+    FAILURE_LAMP_CONTOURS
+} AnalysisFailure;
+
 class ImageProcessor : public QObject
 {
     Q_OBJECT
@@ -27,11 +35,13 @@ public:
     void SetVisualizationWidget(std::shared_ptr<GLVisualisation> visWidget);
     bool UploadImage(QString fileName);
     void ResetImage();
+    bool IsImagePresent();
 
 signals:
     void DistanceCalculated(float distance, float angle);
     void PrintRadii(QString radii);
     void PrintFullResults(ResultsType results);
+    void AnalysisFailed(AnalysisFailure failure);
 
 public slots:
     void SaveCalculations();
@@ -43,6 +53,8 @@ public slots:
     void PrintRadiiSlot(QString radii);
     void RunFullAnalysis();
     void ProcessElectrodesSlot();
+    void ElectrodesProcessingFail();
+
 
 private:
     MainWindow *mainWindow;
@@ -51,6 +63,7 @@ private:
     QImage originalImage;
     std::unique_ptr<LampImageAnalyser> analyser;
 
+    bool imageUploaded = false;
     QPair<QPointF, QPointF> vertices;
     int vertex_count = 0;
 
