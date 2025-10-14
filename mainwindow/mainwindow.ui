@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>649</width>
-    <height>708</height>
+    <width>688</width>
+    <height>764</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -41,17 +41,30 @@
      </widget>
     </item>
     <item>
-     <widget class="VisualWidget" name="imageWidget" native="true">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
-      </property>
-     </widget>
+     <layout class="QVBoxLayout" name="layoutImageWidget" stretch=""/>
     </item>
     <item>
      <layout class="QGridLayout" name="gridLayout">
+      <item row="2" column="1">
+       <widget class="QLabel" name="labelElectrodes">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="labelFullAnalysis">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
       <item row="1" column="1">
        <widget class="QLabel" name="labelRadii">
         <property name="sizePolicy">
@@ -68,10 +81,53 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="0">
+       <widget class="QPushButton" name="pushButtonRunAnalysis">
+        <property name="text">
+         <string>Run Full Analysis</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QPushButton" name="pushButtonElectrodes">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Process electrodes</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="pushButtonCurveAnalysis">
+        <property name="text">
+         <string>Run Walls Analysis</string>
+        </property>
+       </widget>
+      </item>
       <item row="3" column="1">
        <widget class="QLabel" name="labelDistance">
         <property name="text">
          <string>Select two dots to calculate distance</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QPushButton" name="pushButtonManualSelection">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Select points (calc. distance)</string>
         </property>
        </widget>
       </item>
@@ -88,60 +144,30 @@
         </property>
        </spacer>
       </item>
-      <item row="1" column="0">
-       <widget class="QPushButton" name="pushButtonCurveAnalysis">
+      <item row="4" column="0">
+       <widget class="QPushButton" name="pushButtonReset">
         <property name="text">
-         <string>Run Curves Analysis</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QPushButton" name="pushButtonDeselect">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="text">
-         <string>Deselect vertices</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="0">
-       <widget class="QPushButton" name="pushButtonRunAnalysis">
-        <property name="text">
-         <string>Run Full Analysis</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QLabel" name="labelFullAnalysis">
-        <property name="text">
-         <string/>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
+         <string>Reset image</string>
         </property>
        </widget>
       </item>
       <item row="0" column="2">
-       <widget class="QPushButton" name="pushButtonSaveResults">
-        <property name="text">
-         <string>Save calculations to file...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
-       <widget class="QPushButton" name="pushButtonReset">
-        <property name="text">
-         <string>Reset</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QPushButton" name="pushButtonElectrodes">
-        <property name="text">
-         <string>Process electrodes</string>
-        </property>
-       </widget>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QPushButton" name="pushButtonSaveResults">
+          <property name="text">
+           <string>Save calculations to file...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonSaveImage">
+          <property name="text">
+           <string>Save image...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </item>
@@ -152,21 +178,13 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>649</width>
+     <width>688</width>
      <height>24</height>
     </rect>
    </property>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>VisualWidget</class>
-   <extends>QWidget</extends>
-   <header location="global">visualwidget.h</header>
-   <container>1</container>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>

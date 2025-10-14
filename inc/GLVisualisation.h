@@ -19,6 +19,7 @@ public:
 
     void ShowImage(const QImage &image);
     void setImage(const QImage& imgIn);
+    void SetImageClickable(bool isClickable);
 
 signals:
     void clickedImage(const QPointF& imgPt);
@@ -41,6 +42,10 @@ private:
     QMutex imgMutex_;
 
     int imgW_ = 0, imgH_ = 0;
+    int vpW_ = 0, vpH_ = 0;
+
+
+    bool widgetClickable = false;
 
     void ensureTexture();
     std::optional<QPointF> widgetToImage(const QPointF& wpt) const;

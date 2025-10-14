@@ -1,5 +1,6 @@
 #include "GLVisualisation.h"
 #include <QOpenGLExtraFunctions>
+#include <QOpenGLPixelTransferOptions>
 #include <QMouseEvent>
 
 
@@ -29,8 +30,8 @@ void main() {
 GLVisualisation::GLVisualisation(QWidget *parent)
     : QOpenGLWidget(parent)
 {
-    setMinimumSize(640, 480);
-    setMouseTracking(true); 
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setAttribute(Qt::WA_TransparentForMouseEvents, false);
 }
 
 GLVisualisation::~GLVisualisation()
@@ -42,13 +43,20 @@ GLVisualisation::~GLVisualisation()
     doneCurrent();
 }
 
+
 void GLVisualisation::setImage(const QImage& img) {
     QMutexLocker lock(&imgMutex_);
     // Convert now to a GL-friendly format; mirror vertically for OpenGL coords
     pendingImage_ = img.convertToFormat(QImage::Format_RGBA8888).mirrored();
     textureDirty_ = true;
     lock.unlock();
+    texture_.reset();
     update(); // schedule repaint
+}
+
+void GLVisualisation::SetImageClickable(bool isClickable)
+{
+    widgetClickable = isClickable;
 }
 
 void GLVisualisation::initializeGL()
@@ -99,70 +107,101 @@ void GLVisualisation::initializeGL()
 
 void GLVisualisation::resizeGL(int w, int h)
 {
-    float dpr = devicePixelRatioF();  // important on Windows/HiDPI
-    glViewport(0, 0, int(w * dpr), int(h * dpr));
+    const float dpr = devicePixelRatioF();
+    vpW_ = int(w * dpr);
+    vpH_ = int(h * dpr);
+
+    glViewport(0, 0, vpW_, vpH_);
+    update(); // ← ensure paintGL() runs with new size
 }
 
-void GLVisualisation::ensureTexture() {
+void GLVisualisation::ensureTexture()
+{
     if (!textureDirty_) return;
 
-    QImage imgCopy;
+    QImage src;
     {
         QMutexLocker lock(&imgMutex_);
         if (pendingImage_.isNull()) return;
-        imgCopy = pendingImage_;  // local copy while not bound to GL
+        src = pendingImage_;
         textureDirty_ = false;
     }
 
-    // Create or update texture
-    if (!texture_) {
+    // Normalize format (flip if needed)
+    QImage img = src.convertToFormat(QImage::Format_RGBA8888);
+    // img = img.mirrored();
+
+    const int w = img.width();
+    const int h = img.height();
+
+    // <<< IMPORTANT: publish the NEW size immediately so paintGL uses it
+    imgW_ = w;
+    imgH_ = h;
+
+    const bool needRecreate = !texture_
+                           || texture_->width()  != w
+                           || texture_->height() != h;
+
+    if (needRecreate) {
+        if (texture_) { texture_->destroy(); }
         texture_ = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
+        texture_->create();
+        texture_->bind();
         texture_->setFormat(QOpenGLTexture::RGBA8_UNorm);
         texture_->setMinificationFilter(QOpenGLTexture::Linear);
         texture_->setMagnificationFilter(QOpenGLTexture::Linear);
         texture_->setWrapMode(QOpenGLTexture::ClampToEdge);
         texture_->setMipLevels(1);
         texture_->setAutoMipMapGenerationEnabled(false);
-        texture_->create();
-        texture_->bind();
-        texture_->setSize(imgCopy.width(), imgCopy.height());
-        texture_->allocateStorage();
-        texture_->setData(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8, imgCopy.constBits());
-        texture_->release();
+        texture_->setSize(w, h);
+        texture_->allocateStorage(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8);
     } else {
         texture_->bind();
-        if (texture_->width() != imgCopy.width() || texture_->height() != imgCopy.height()) {
-            texture_->setSize(imgCopy.width(), imgCopy.height());
-            texture_->allocateStorage();
-        }
-        texture_->setData(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8, imgCopy.constBits());
-        texture_->release();
     }
+
+    // Upload (respect stride)
+    QOpenGLPixelTransferOptions xfer;
+    xfer.setAlignment(1);
+    const int rowPixels = img.bytesPerLine() / 4;
+    texture_->setData(QOpenGLTexture::RGBA,
+                      QOpenGLTexture::UInt8,
+                      img.constBits(),
+                      (rowPixels != w) ? &xfer : nullptr);
+
+    texture_->release();
 }
 
 void GLVisualisation::paintGL()
 {
-     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glClear(GL_COLOR_BUFFER_BIT);
 
     ensureTexture();
-    if (!texture_) return;
+    if (!texture_ || imgW_ <= 0 || imgH_ <= 0 || vpW_ <= 0 || vpH_ <= 0) return;
 
-    // Identity MVP is fine for NDC quad
-    QMatrix4x4 mvp; mvp.setToIdentity();
+    // Ratios of image->widget in each axis (in framebuffer pixels)
+    const float rx = float(imgW_) / float(vpW_);
+    const float ry = float(imgH_) / float(vpH_);
+
+    // Uniform scale that never enlarges: if image is bigger, scale down so max(rx,ry)==1
+    // if image is smaller, k == 1 (no upscaling)
+    const float k  = 1.0f / std::max(1.0f, std::max(rx, ry));
+
+    // Final NDC scales: 1.0 means full widget, <1.0 means smaller (centered)
+    const float sx = rx * k;
+    const float sy = ry * k;
+
+    QMatrix4x4 mvp; 
+    mvp.setToIdentity();
+    mvp.scale(sx, sy, 1.0f);  // centered because base quad is at origin
 
     program_.bind();
-
-    // Uniforms — ensure locations are valid (>=0)
     program_.setUniformValue("uMvp", mvp);
     program_.setUniformValue("uTex", 0);
 
     glActiveTexture(GL_TEXTURE0);
-    texture_->bind();               // QOpenGLTexture (GL_TEXTURE_2D)
-    // (Set filters/wrap once at creation)
-    // texture_->setMinMagFilters(QOpenGLTexture::Linear, QOpenGLTexture::Linear);
-    // texture_->setWrapMode(QOpenGLTexture::ClampToEdge);
+    texture_->bind();
 
     vao_.bind();
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -170,10 +209,6 @@ void GLVisualisation::paintGL()
 
     texture_->release();
     program_.release();
-
-    imgW_ = texture_->width();
-    imgH_ = texture_->height();
-
 }
 
 void GLVisualisation::ShowImage(const QImage &image)
@@ -182,9 +217,12 @@ void GLVisualisation::ShowImage(const QImage &image)
 }
 
 void GLVisualisation::mousePressEvent(QMouseEvent* e) {
-    emit clickedWidget(e->pos());
-    if (auto p = widgetToImage(e->position()); p.has_value())
-        emit clickedImage(*p);
+    if (widgetClickable)
+    {
+        emit clickedWidget(e->pos());
+        if (auto p = widgetToImage(e->position()); p.has_value())
+            emit clickedImage(*p);
+    }
 }
 
 std::optional<QPointF> GLVisualisation::widgetToImage(const QPointF& wpt) const {

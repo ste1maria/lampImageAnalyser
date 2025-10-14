@@ -131,18 +131,23 @@ void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
 
         // TRACING
         cv::Mat toTrace = contouredImg.clone();
-        this->contours.clear();
-        cv::findContours(toTrace, this->contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-        std::sort(this->contours.begin(), this->contours.end(),
+        this->lamp.contours.clear();
+        cv::findContours(toTrace, this->lamp.contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+        std::sort(this->lamp.contours.begin(), this->lamp.contours.end(),
               [](auto &a, auto &b){ return a.size() > b.size(); });
         
+        if (this->lamp.contours.size() > 10 || this->lamp.contours.size() < 4)
+        {
+            emit WallsAnalysisFailed();
+            return;
+        }
 
         cv::Mat coloredEdges; 
         cv::cvtColor(imgGray, coloredEdges, cv::COLOR_GRAY2BGR);
 
-        for (size_t i = 0; i < this->contours.size(); ++i) 
+        for (size_t i = 0; i < this->lamp.contours.size(); ++i) 
         {
-            cv::polylines(coloredEdges, this->contours[i], false, colours[i], 1, cv::LINE_AA);
+            cv::polylines(coloredEdges, this->lamp.contours[i], false, colours[i], 1, cv::LINE_AA);
         }
         //cv::Mat edgedImageBW;
         //cv::cvtColor(coloredEdges, edgedImageBW, cv::COLOR_BGR2GRAY);
@@ -407,13 +412,13 @@ void LampImageAnalyser::CalculateRadii()
 
     std::vector<std::vector<cv::Point2f>> simples;
     std::vector<int>colour_indices;
-    for (size_t i = 0; i < this->contours.size(); i++)
+    for (size_t i = 0; i < this->lamp.contours.size(); i++)
     {
-        if (contours[i].size() < 200)
+        if (lamp.contours[i].size() < 200)
         {  
             continue;
         }
-        std::vector<cv::Point> contour = contours[i];
+        std::vector<cv::Point> contour = lamp.contours[i];
 
         std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
             return a.y < b.y;
@@ -448,7 +453,7 @@ void LampImageAnalyser::CalculateRadii()
         std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
         radii += QString::fromStdString(radius) + "; ";
         
-        cv::Point coordinates = cv::Point(contours[i][0].x - 50, contours[i][0].y + 20);
+        cv::Point coordinates = cv::Point(lamp.contours[i][0].x - 50, lamp.contours[i][0].y + 20);
 
         cv::putText(*this->currentImageCv, 
                 cv::String(radius), 
@@ -634,9 +639,9 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 
         // TRACING
         cv::Mat toTrace = cannyImg.clone();
-        this->electrodes.clear();
-        cv::findContours(toTrace, this->electrodes, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-        std::sort(this->electrodes.begin(), this->electrodes.end(),
+        this->lamp.electrodes.clear();
+        cv::findContours(toTrace, this->lamp.electrodes, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+        std::sort(this->lamp.electrodes.begin(), this->lamp.electrodes.end(),
               [](auto &a, auto &b){ return a.size() > b.size(); });
         
         cv::Mat coloredEdges; 
@@ -645,7 +650,7 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
         // find vertices
         std::vector<cv::Point> apexesVect;
         ApexSanityResult apexError = ApexSanityResult::APEX_OK;
-        for (auto electrode : this->electrodes) 
+        for (auto electrode : this->lamp.electrodes) 
         {
             // Approximate polyline with straight segments
             std::vector<cv::Point> approx;
@@ -682,12 +687,12 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 
             // sanity check
             std::vector<cv::Point> approx_sorted = approx;
-            // sometimes the contours have double segments or go back and forth
+            // sometimes the lamp.contours have double segments or go back and forth
             std::sort(approx_sorted.begin(), approx_sorted.end(), [](const cv::Point& a, const cv::Point& b) {
                 return a.x < b.x;
             });
             ApexSanityResult isApexOk = ApexSanityCheck(approx_sorted, apex, imgGray.rows);
-            
+
             if (isApexOk == ApexSanityResult::APEX_OK)
             {
                 apexesVect.push_back(apex);
@@ -709,25 +714,21 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
         {
             cv::circle(coloredEdges, ap, 3, cv::Scalar(0, 0, 255));
         }
-        cv::imshow("Apexes", coloredEdges);
+        //cv::imshow("Apexes", coloredEdges);
 
         QPair<cv::Point, cv::Point> apexes;
-        if (apexesVect.size() > 2)
-        {
-            // TODO: remove extra apexes
-        }
-        else
-        {
-            apexes.first = apexesVect[0];
-            apexes.second = apexesVect[1];
-        }
+        apexes.first = apexesVect[0];
+        apexes.second = apexesVect[1];
         
         auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
-        qDebug() << "distance" << distance << "angle" << angle;
+        this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
+        cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
+        //qDebug() << "distance" << distance << "angle" << angle;
+        qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
     }
     catch(...)
     {
-        qDebug() << "Exception while processing electrodes";
+        qDebug() << "Exception while processing lamp electrodes";
     }
 
 }

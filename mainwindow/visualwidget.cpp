@@ -5,7 +5,7 @@ VisualWidget::VisualWidget(QWidget *parent)
     : QWidget(parent)
 {
     glWidget = new GLVisualisation(this);
-    glWidget->setGeometry(0, 0, width(), height());
+    //glWidget->setGeometry(0, 0, width(), height());
 }
 
 VisualWidget::~VisualWidget()
@@ -33,7 +33,7 @@ void VisualWidget::resizeEvent(QResizeEvent *event)
     int x = (w - newW) / 2;
     int y = (h - newH) / 2;
 
-    glWidget->setGeometry(x, y, newW, newH);
+    glWidget->setGeometry(rect());
 }
 
 GLVisualisation* VisualWidget::GetVisualisationWidget()

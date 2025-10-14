@@ -16,25 +16,30 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     this->setCentralWidget(ui->centralwidget);     
-    this->imgProcessor = std::make_unique<ImageProcessor>(this);
-    this->visualisation = std::make_shared<GLVisualisation>(this->ui->imageWidget->GetVisualisationWidget());
 
+    this->imgProcessor = std::make_unique<ImageProcessor>(this);
+    this->visualisation = new GLVisualisation(this);
+    ui->layoutImageWidget->addWidget(this->visualisation);
     this->imgProcessor->SetVisualizationWidget(this->visualisation);
 
-    ui->pushButtonDeselect->setEnabled(false);
     ui->pushButtonCurveAnalysis->setEnabled(false);
     ui->pushButtonRunAnalysis->setEnabled(false);
     ui->pushButtonElectrodes->setEnabled(false);
+    ui->pushButtonManualSelection->setEnabled(false);
+    ui->pushButtonReset->setEnabled(false);
+    ui->pushButtonSaveResults->setEnabled(false);
+    ui->pushButtonSaveImage->setEnabled(false);
     ui->labelDistance->clear();
+    ui->labelRadii->clear();
 
     connect(ui->pushButtonCurveAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
-    connect(ui->pushButtonDeselect, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
+    connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
     connect(ui->pushButtonReset, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
     connect(ui->pushButtonRunAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunFullAnalysis);
     connect(ui->pushButtonElectrodes, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::ProcessElectrodesSlot);
 
-    connect(this->visualisation.get(), &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
+    connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
     connect(this->imgProcessor.get(), &ImageProcessor::PrintRadii, this, &MainWindow::PrintRadii);
     connect(this->imgProcessor.get(), &ImageProcessor::AnalysisFailed, this, &MainWindow::AnalysisFailedSlot);
@@ -66,6 +71,10 @@ void MainWindow::UploadImage()
             ui->pushButtonCurveAnalysis->setEnabled(true);
             ui->pushButtonRunAnalysis->setEnabled(true);
             ui->pushButtonElectrodes->setEnabled(true);
+            ui->pushButtonManualSelection->setEnabled(true);
+            ui->pushButtonReset->setEnabled(true);
+            ui->pushButtonSaveResults->setEnabled(true);
+            ui->pushButtonSaveImage->setEnabled(true);
             ui->labelDistance->setText("Select two dots to calculate distance");
         }
     }
@@ -73,16 +82,17 @@ void MainWindow::UploadImage()
 
 void MainWindow::ResetImageSlot()
 {
-    ui->pushButtonDeselect->setEnabled(false);
-    ui->labelDistance->setText("Select two dots to calculate distance");
     this->imgProcessor->ResetImage();
+    ui->labelFullAnalysis->clear();
+    ui->labelDistance->setText("Select two dots to calculate distance");
+    ui->labelElectrodes->clear();
+    ui->labelRadii->clear();
 
 }
 
 void MainWindow::ShowVerticesDistanceAngle(float distance, float angle)
 {
     ui->labelDistance->setText(QString("Distance: %1 px; Angle: %2°").arg(distance).arg(angle));
-    ui->pushButtonDeselect->setEnabled(true);
 }
 
 void MainWindow::PrintRadii(QString radii)
@@ -119,4 +129,21 @@ void MainWindow::AnalysisFailedSlot(AnalysisFailure failure)
     }
     failureMessage.setText(messageText);
     failureMessage.exec();
+}
+
+void MainWindow::StartManualSelection()
+{
+    this->imgProcessor->StartManualSelection();
+    ui->pushButtonManualSelection->setText("Reset selection");
+    
+    connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::ResetManualSelection);
+}
+
+void MainWindow::ResetManualSelection()
+{
+    this->imgProcessor->ResetManualSelection();
+    ui->pushButtonManualSelection->setText("Select points (calc. distance)");
+    ui->labelDistance->setText("Select two dots to calculate distance");
+    
+    connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
 }

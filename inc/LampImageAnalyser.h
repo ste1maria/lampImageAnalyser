@@ -38,14 +38,25 @@ signals:
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
     void RadiiCalculated(QString radii);
     void ElectrodesAnalysisFailed();
+    void WallsAnalysisFailed();
 
 private:
+
+    class Lamp
+    {
+    public:
+        Lamp(){};
+        ~Lamp(){};
+
+    public:
+        std::vector<std::vector<cv::Point>> contours;
+        std::vector<std::vector<cv::Point>> electrodes;
+        cv::Point2f lampCenter;
+    };
+
+    Lamp lamp;
     cv::Mat edgeDetectedImage;
     std::shared_ptr<cv::Mat> currentImageCv;
-    std::vector<std::vector<cv::Point>> contours;
-    std::vector<std::vector<cv::Point>> electrodes;
-    std::vector<cv::Point> curveCenters;
-    std::vector<float> curvatures;
 
     static void thresh_callback(int, void* );
     void CalculateRadii();

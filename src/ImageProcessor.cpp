@@ -16,13 +16,14 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     connect(this->analyser.get(), &LampImageAnalyser::ImageProcessed, this, &ImageProcessor::ShowEdgedImage);
     connect(this->analyser.get(), &LampImageAnalyser::RadiiCalculated, this, &ImageProcessor::PrintRadiiSlot);
     connect(this->analyser.get(), &LampImageAnalyser::ElectrodesAnalysisFailed, this, &ImageProcessor::ElectrodesProcessingFail);
+    connect(this->analyser.get(), &LampImageAnalyser::WallsAnalysisFailed, this, &ImageProcessor::WallsAnalysisFailSlot);
 }
 
 ImageProcessor::~ImageProcessor()
 {
 }
 
-void ImageProcessor::SetVisualizationWidget(std::shared_ptr<GLVisualisation> visWidget)
+void ImageProcessor::SetVisualizationWidget(GLVisualisation* visWidget)
 {
     this->visualization = visWidget;
 }
@@ -180,4 +181,22 @@ void ImageProcessor::ElectrodesProcessingFail()
 {
     this->ResetImage();
     emit AnalysisFailed(AnalysisFailure::FAILURE_ELECTRODES);
+}
+
+
+void ImageProcessor::WallsAnalysisFailSlot()
+{
+    this->ResetImage();
+    emit AnalysisFailed(AnalysisFailure::FAILURE_LAMP_CONTOURS);
+}
+
+void ImageProcessor::StartManualSelection()
+{
+    this->visualization->SetImageClickable(true);
+}
+
+void ImageProcessor::ResetManualSelection()
+{
+    this->ResetImage();
+    this->visualization->SetImageClickable(false);
 }

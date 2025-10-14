@@ -32,7 +32,7 @@ public:
     ImageProcessor(class MainWindow *mainWindow);
     ~ImageProcessor();
 
-    void SetVisualizationWidget(std::shared_ptr<GLVisualisation> visWidget);
+    void SetVisualizationWidget(GLVisualisation* visWidget);
     bool UploadImage(QString fileName);
     void ResetImage();
     bool IsImagePresent();
@@ -54,11 +54,14 @@ public slots:
     void RunFullAnalysis();
     void ProcessElectrodesSlot();
     void ElectrodesProcessingFail();
+    void StartManualSelection();
+    void ResetManualSelection();
+    void WallsAnalysisFailSlot();
 
 
 private:
     MainWindow *mainWindow;
-    std::shared_ptr<GLVisualisation> visualization;
+    GLVisualisation* visualization;
     QImage currentImage;
     QImage originalImage;
     std::unique_ptr<LampImageAnalyser> analyser;

@@ -28,9 +28,11 @@ private slots:
     void UploadImage();
     void ResetImageSlot();
     void AnalysisFailedSlot(AnalysisFailure failure);
+    void StartManualSelection();
+    void ResetManualSelection();
 
 private:
     Ui::MainWindow *ui;
     std::unique_ptr<ImageProcessor> imgProcessor;
-    std::shared_ptr<GLVisualisation> visualisation;
+    GLVisualisation * visualisation;
 };
