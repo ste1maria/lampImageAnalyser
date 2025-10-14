@@ -51,8 +51,10 @@ bool ImageProcessor::UploadImage(QString fileName)
         success = false;
     }
     this->currentImage = image.convertToFormat(QImage::Format_BGR888);
-    originalImage = currentImage.copy();
+    this->originalImage = currentImage.copy();
     this->ShowImage(currentImage);
+    this->analyser->SetOriginalImage(this->originalImage);
+    this->analyser->SetCurrentImage(this->currentImage);
 
     return success;
 }
@@ -60,7 +62,6 @@ bool ImageProcessor::UploadImage(QString fileName)
 void ImageProcessor::ShowImage(const QImage& image)
 {
     this->visualization->ShowImage(image);
-    this->analyser->SetCurrentImage(image);
 }
 
 void ImageProcessor::SaveImage()
@@ -96,7 +97,8 @@ void ImageProcessor::SaveCalculations()
 
 void ImageProcessor::RunEdgeDetectionSlot()
 {
-    this->analyser->ProcessLampWalls(this->currentImage); 
+    QImage imgToProcess = this->originalImage.copy();
+    this->analyser->ProcessLampWalls(imgToProcess); 
 }
 
 // void ImageProcessor::FindVerticesSlot()
@@ -109,6 +111,7 @@ void ImageProcessor::ResetImage()
     vertex_count = 0;
     currentImage = originalImage.copy();
     this->ShowImage(this->currentImage);
+    this->analyser->ResetImage();
 }
 
 void ImageProcessor::PaintVerticeSlot(const QPointF& imgPt)
@@ -164,6 +167,7 @@ void ImageProcessor::PrintRadiiSlot(QString radii)
 
 void ImageProcessor::RunFullAnalysis()
 {
+    QImage imgToProcess = this->originalImage.copy();
     // find electrodes distance
     
     // find curve radii
@@ -174,7 +178,8 @@ void ImageProcessor::RunFullAnalysis()
 
 void ImageProcessor::ProcessElectrodesSlot()
 {
-    this->analyser->ProcessElectrodes(this->currentImage);
+    QImage imgToProcess = this->originalImage.copy();
+    this->analyser->ProcessElectrodes(imgToProcess);
 }
 
 void ImageProcessor::ElectrodesProcessingFail()

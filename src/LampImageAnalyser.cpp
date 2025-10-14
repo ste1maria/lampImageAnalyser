@@ -51,13 +51,26 @@ void onMouse(int event, int x, int y, int flags, void* userdata)
 LampImageAnalyser::LampImageAnalyser()
 {
     this->currentImageCv = std::make_shared<cv::Mat>();
+    this->originalImageCv = std::make_shared<cv::Mat>();
 };
+
+void LampImageAnalyser::SetOriginalImage(const QImage& image)
+{
+    cv::Mat view(image.height(), image.width(), CV_8UC3,
+                 const_cast<uchar*>(image.bits()), image.bytesPerLine());
+    *this->originalImageCv = view.clone(); 
+}
 
 void LampImageAnalyser::SetCurrentImage(const QImage& image)
 {
     cv::Mat view(image.height(), image.width(), CV_8UC3,
                  const_cast<uchar*>(image.bits()), image.bytesPerLine());
     *this->currentImageCv = view.clone(); 
+}
+
+void LampImageAnalyser::ResetImage()
+{
+    *this->currentImageCv = this->originalImageCv->clone();
 }
 
 cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
@@ -142,18 +155,16 @@ void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
             return;
         }
 
-        cv::Mat coloredEdges; 
-        cv::cvtColor(imgGray, coloredEdges, cv::COLOR_GRAY2BGR);
+        cv::cvtColor(imgGray, *this->currentImageCv, cv::COLOR_GRAY2BGR);
 
         for (size_t i = 0; i < this->lamp.contours.size(); ++i) 
         {
-            cv::polylines(coloredEdges, this->lamp.contours[i], false, colours[i], 1, cv::LINE_AA);
+            cv::polylines(*this->currentImageCv, this->lamp.contours[i], false, colours[i], 1, cv::LINE_AA);
         }
         //cv::Mat edgedImageBW;
         //cv::cvtColor(coloredEdges, edgedImageBW, cv::COLOR_BGR2GRAY);
         
-        this->edgeDetectedImage = contouredImg;
-        *this->currentImageCv = coloredEdges;
+        //this->edgeDetectedImage = contouredImg;
 
         emit ImageProcessed(this->currentImageCv);
 
@@ -186,6 +197,33 @@ void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
     cv::putText(drawn, 
                 coordinates, 
                 cv::Point(imgPt.x() + 5, imgPt.y() + 5),
+                cv::FONT_HERSHEY_PLAIN,
+                0.9,
+                cv::Scalar(255, 0, 0)
+    );
+
+    *this->currentImageCv = std::move(drawn);
+
+    emit ShowVerticeOnImage(this->currentImageCv);
+}
+
+void LampImageAnalyser::PaintVertice(const cv::Point& imgPt)
+{
+    cv::Mat drawn = this->currentImageCv->clone();
+
+    cv::drawMarker(
+        drawn,
+        cv::Point(cvRound(imgPt.x), cvRound(imgPt.y)),
+        cv::Scalar(255,255,255),
+        cv::MARKER_CROSS,
+        10,
+        2
+    );
+    
+    cv::String coordinates = cv::String(std::format("({},{})", imgPt.x, imgPt.y));
+    cv::putText(drawn, 
+                coordinates, 
+                cv::Point(imgPt.x + 5, imgPt.y + 5),
                 cv::FONT_HERSHEY_PLAIN,
                 0.9,
                 cv::Scalar(255, 0, 0)
@@ -722,9 +760,14 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
         
         auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
         this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
-        cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
-        //qDebug() << "distance" << distance << "angle" << angle;
-        qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
+
+        PaintVertice(apexes.first);
+        PaintVertice(apexes.second);
+
+        this->lamp.electrodesApexes = apexes;
+        // cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
+        // //qDebug() << "distance" << distance << "angle" << angle;
+        // qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
     }
     catch(...)
     {

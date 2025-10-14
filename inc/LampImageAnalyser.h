@@ -23,10 +23,13 @@ public:
     
     ~LampImageAnalyser(){};
 
+    void SetOriginalImage(const QImage& image);
     void SetCurrentImage(const QImage& image);
+    void ResetImage();
 
     void ProcessLampWalls(QImage& inputImage);
     void PaintVertice(const QPointF& imgPt);
+    void PaintVertice(const cv::Point& imgPt);
     void GetCurvatures(std::vector<float> * curvatures);
     void ProcessElectrodes(QImage& inputImage);
     
@@ -51,11 +54,13 @@ private:
     public:
         std::vector<std::vector<cv::Point>> contours;
         std::vector<std::vector<cv::Point>> electrodes;
+        QPair<cv::Point, cv::Point> electrodesApexes;
         cv::Point2f lampCenter;
     };
 
     Lamp lamp;
     cv::Mat edgeDetectedImage;
+    std::shared_ptr<cv::Mat> originalImageCv;
     std::shared_ptr<cv::Mat> currentImageCv;
 
     static void thresh_callback(int, void* );
