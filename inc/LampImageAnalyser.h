@@ -50,14 +50,27 @@ private:
     public:
         Lamp(){};
         ~Lamp(){};
+        void ResetLampModel()
+        {
+            lampContours.clear();
+            electrodes.clear();
+            electrodesApexes = QPair<cv::Point, cv::Point>(undeterminedPoint, undeterminedPoint);
+            lampCenter = undeterminedPoint;
+        }
 
     public:
-        std::vector<std::vector<cv::Point>> contours;
+        std::vector<std::vector<cv::Point>> lampContours;
         std::vector<std::vector<cv::Point>> electrodes;
+        std::vector<cv::Point> lampWallsApexes;
         QPair<cv::Point, cv::Point> electrodesApexes;
-        cv::Point2f lampCenter;
+        const cv::Point2f undeterminedPoint= cv::Point2f(0,0);
+        cv::Point2f lampCenter = undeterminedPoint;
+        double pixelMmRatio = 0;
     };
 
+    const double standardLampWidth_mm = 7.00;
+
+    std::vector<std::vector<cv::Point>> contours;
     Lamp lamp;
     cv::Mat edgeDetectedImage;
     std::shared_ptr<cv::Mat> originalImageCv;
@@ -66,4 +79,7 @@ private:
     static void thresh_callback(int, void* );
     void CalculateRadii();
     void PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col);
+    void CalculateElectrodes(QImage& inputImage);
+    void SimplifyLampContours();
+    void FindPixelMmRatio(int lampWidthPx);
 };

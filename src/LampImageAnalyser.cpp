@@ -144,31 +144,27 @@ void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
 
         // TRACING
         cv::Mat toTrace = contouredImg.clone();
-        this->lamp.contours.clear();
-        cv::findContours(toTrace, this->lamp.contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-        std::sort(this->lamp.contours.begin(), this->lamp.contours.end(),
+        this->contours.clear();
+        cv::findContours(toTrace, this->contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+        std::sort(this->contours.begin(), this->contours.end(),
               [](auto &a, auto &b){ return a.size() > b.size(); });
         
-        if (this->lamp.contours.size() > 10 || this->lamp.contours.size() < 4)
+        if (this->contours.size() > 10 || this->contours.size() < 4)
         {
             emit WallsAnalysisFailed();
             return;
         }
 
-        cv::cvtColor(imgGray, *this->currentImageCv, cv::COLOR_GRAY2BGR);
-
-        for (size_t i = 0; i < this->lamp.contours.size(); ++i) 
+        if (this->lamp.lampCenter == this->lamp.undeterminedPoint)
         {
-            cv::polylines(*this->currentImageCv, this->lamp.contours[i], false, colours[i], 1, cv::LINE_AA);
+            this->CalculateElectrodes(inputImage);
         }
-        //cv::Mat edgedImageBW;
-        //cv::cvtColor(coloredEdges, edgedImageBW, cv::COLOR_BGR2GRAY);
-        
-        //this->edgeDetectedImage = contouredImg;
+
+        this->SimplifyLampContours();
+
+        this->CalculateRadii();
 
         emit ImageProcessed(this->currentImageCv);
-
-        CalculateRadii();
     }
     catch(const cv::Exception e)
     {
@@ -249,32 +245,42 @@ void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber, cv::
     emit ShowVerticeOnImage(this->currentImageCv);
 }
 
-// 1) resample the polyline by arc length (open/closed)
-static std::vector<cv::Point2f> resampleByArcLen(const std::vector<cv::Point2f>& P, float ds, bool closed=false) {
-    std::vector<cv::Point2f> Q; 
-    Q.reserve(P.size()+1);
+static std::vector<cv::Point> resampleByArcLen(const std::vector<cv::Point>& P, float ds, bool closed=false) 
+{
+    std::vector<cv::Point> Q; 
+    Q.reserve(P.size() + 1);
+
     for (auto& p : P) 
-        Q.emplace_back(p);
-    if (closed && (Q.front()!=Q.back())) 
-        Q.push_back(Q.front());
+    {
+       Q.emplace_back(p);
+    }
+    if (closed && (Q.front() != Q.back())) 
+    {
+       Q.push_back(Q.front());
+    }
 
     std::vector<float> S(Q.size(), 0.f);
-    for (size_t i=1;i<Q.size();++i) 
-        S[i] = S[i-1] + cv::norm(Q[i]-Q[i-1]);
+    for (size_t i = 1; i < Q.size(); ++i) 
+    {
+        S[i] = S[i - 1] + cv::norm(Q[i] - Q[i -1 ]);
+    }
+        
     float L = S.back(); 
     if (L <= ds) 
+    {
         return Q;
+    }
 
-    int M = std::max(2, int(std::floor(L/ds))+1);
-    std::vector<cv::Point2f> R; 
+    int M = std::max(2, int(std::floor(L/ds)) + 1);
+    std::vector<cv::Point> R; 
     R.reserve(M);
-    for (int m=0; m<M; ++m) 
+    for (int m = 0; m < M; ++m) 
     {
         float s = std::min(m*ds, L);
         auto it = std::lower_bound(S.begin(), S.end(), s);
-        size_t j = std::clamp<size_t>(std::max<int>(1, int(it - S.begin())), 1, Q.size()-1);
-        float t = (S[j]>S[j-1]) ? (s - S[j-1])/(S[j]-S[j-1]) : 0.f;
-        R.emplace_back(Q[j-1] + t*(Q[j]-Q[j-1]));
+        size_t j = std::clamp<size_t>(std::max<int>(1, int(it - S.begin())), 1, Q.size() - 1);
+        float t = (S[j] > S[j-1]) ? (s - S[j - 1])/(S[j]-S[j - 1]) : 0.f;
+        R.emplace_back(Q[j - 1] + t*(Q[j]-Q[j -1 ]));
     }
     return R;
 }
@@ -285,12 +291,24 @@ static void drawPolylineF(cv::Mat& img,
                           int thickness=2,
                           int lineType=cv::LINE_AA)
 {
-    if (poly.size() < 2) return;
-    auto toInt = [](const cv::Point2f& p){ return cv::Point(cvRound(p.x), cvRound(p.y)); };
+    if (poly.size() < 2) 
+    {
+        return;
+    }
+
+    auto toInt = [](const cv::Point2f& p)
+    { 
+        return cv::Point(cvRound(p.x), cvRound(p.y)); 
+    };
+
     for (size_t i = 1; i < poly.size(); ++i)
-        cv::line(img, toInt(poly[i-1]), toInt(poly[i]), color, thickness, lineType);
+    {
+       cv::line(img, toInt(poly[i-1]), toInt(poly[i]), color, thickness, lineType);
+    }
     if (closed)
-        cv::line(img, toInt(poly.back()), toInt(poly.front()), color, thickness, lineType);
+    {
+      cv::line(img, toInt(poly.back()), toInt(poly.front()), color, thickness, lineType);
+    }
 }
 
 struct RadiusStats {
@@ -300,45 +318,67 @@ struct RadiusStats {
     float r_mean;      // mean of local radii
     float r_hmean;     // harmonic mean of local radii (averaging curvature)
     float r_fit;       // global best-fit circle radius (Kåsa)
-    cv::Point2f c_fit; // best-fit circle center
+    cv::Point c_fit; // best-fit circle center
     int n_samples;     // points used for local stats
 };
 
 
-static bool circumcircleR(const cv::Point2f& A, const cv::Point2f& B, const cv::Point2f& C,
-                          cv::Point2f& center, float& radius)
+static bool circumcircleR(const cv::Point& A, const cv::Point& B, const cv::Point& C,
+                          cv::Point& center, float& radius)
 {
-    float a2=A.dot(A), b2=B.dot(B), c2=C.dot(C);
-    float d = 2.f*(A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
-    if (std::abs(d) < 1e-8f) return false; // nearly colinear
-    center.x = (a2*(B.y-C.y) + b2*(C.y-A.y) + c2*(A.y-B.y)) / d;
-    center.y = (a2*(C.x-B.x) + b2*(A.x-C.x) + c2*(B.x-A.x)) / d;
+    float a2 = A.dot(A), b2 = B.dot(B), c2 = C.dot(C);
+    float d = 2.f*(A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
+
+    if (std::abs(d) < 1e-8f)
+    {
+        return false; // nearly colinear
+    }
+    center.x = (a2 * (B.y - C.y) + b2 * (C.y - A.y) + c2 * (A.y - B.y)) / d;
+    center.y = (a2 * (C.x - B.x) + b2 * (A.x - C.x) + c2 * (B.x - A.x)) / d;
     radius   = cv::norm(center - B);
     return true;
 }
 
-static bool fitCircleKasa(const std::vector<cv::Point2f>& P, cv::Point2f& C, float& R) {
-    if (P.size() < 3) return false;
+static bool fitCircleKasa(const std::vector<cv::Point>& P, cv::Point& C, float& R) 
+{
+    if (P.size() < 3) 
+    {
+        return false;
+    }
     cv::Mat A(P.size(), 3, CV_64F), b(P.size(), 1, CV_64F);
-    for (int i=0;i<(int)P.size();++i) {
-        double x=P[i].x, y=P[i].y;
-        A.at<double>(i,0)=x; A.at<double>(i,1)=y; A.at<double>(i,2)=1.0;
-        b.at<double>(i,0)=-(x*x + y*y);
+
+    for (int i = 0; i < (int)P.size(); ++i)
+    {
+        double x = P[i].x, y = P[i].y;
+        A.at<double>(i, 0) = x; 
+        A.at<double>(i, 1) = y; 
+        A.at<double>(i, 2) = 1.0;
+        b.at<double>(i, 0) =- (x*x + y*y);
     }
     cv::Mat sol;
-    if (!cv::solve(A, b, sol, cv::DECOMP_SVD)) return false;
-    double Acoef=sol.at<double>(0), Bcoef=sol.at<double>(1), Ccoef=sol.at<double>(2);
+    if (!cv::solve(A, b, sol, cv::DECOMP_SVD)) 
+    {
+        return false;
+    }
+    double Acoef = sol.at<double>(0), Bcoef = sol.at<double>(1), Ccoef = sol.at<double>(2);
     double cx = -Acoef/2.0, cy = -Bcoef/2.0;
     double r2 = cx*cx + cy*cy - Ccoef;
-    if (r2 <= 0) return false;
-    C = cv::Point2f((float)cx,(float)cy);
+    if (r2 <= 0) 
+    {
+        return false;
+    }
+    C = cv::Point((float)cx, (float)cy);
     R = (float)std::sqrt(r2);
     return std::isfinite(R);
 }
 
 template<typename T>
-static T percentile(std::vector<T> v, double p01_to_99) {
-    if (v.empty()) return std::numeric_limits<T>::quiet_NaN();
+static T percentile(std::vector<T> v, double p01_to_99) 
+{
+    if (v.empty()) 
+    {
+        return std::numeric_limits<T>::quiet_NaN();
+    }
     p01_to_99 = std::clamp(p01_to_99, 0.0, 100.0);
     size_t k = (size_t)std::floor((p01_to_99/100.0) * (v.size()-1));
     std::nth_element(v.begin(), v.begin()+k, v.end());
@@ -346,22 +386,39 @@ static T percentile(std::vector<T> v, double p01_to_99) {
 }
 
 // local radii via 3-point circumcircle on a uniformly-sampled curve
-static std::vector<float> localRadii(const std::vector<cv::Point2f>& P, float ds=1.0f, int stride=2, bool closed=false) {
+static std::vector<float> localRadii(const std::vector<cv::Point>& P, float ds=1.0f, int stride=2, bool closed=false) 
+{
     auto U = resampleByArcLen(P, ds, closed);
     int n = (int)U.size();
-    if (n < 3) return {};
-    auto idx = [&](int i){ return closed ? ( (i%n+n)%n ) : std::clamp(i,0,n-1); };
-    std::vector<float> R; R.reserve(n);
-    for (int i=0;i<n;++i) {
+
+    if (n < 3)
+    {
+        return {};
+    }
+    
+    auto idx = [&](int i)
+    { 
+        return closed ? ( (i % n + n) % n ) : std::clamp(i, 0, n-1); 
+    };
+
+    std::vector<float> R; 
+    R.reserve(n);
+
+    for (int i = 0; i < n; ++i) 
+    {
         int i0 = idx(i - stride), i2 = idx(i + stride);
-        cv::Point2f c; float r;
-        if (circumcircleR(U[i0], U[i], U[i2], c, r) && std::isfinite(r)) R.push_back(r);
+        cv::Point c; 
+        float r;
+        if (circumcircleR(U[i0], U[i], U[i2], c, r) && std::isfinite(r)) 
+        {
+            R.push_back(r);
+        }
     }
     return R;
 }
 
 // ---------- main: stats per polyline ----------
-static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point2f>& poly,
+static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point>& poly,
                                               float ds=1.0f, int stride=2, bool closedFlag=false)
 {
     bool closed = false;
@@ -369,11 +426,18 @@ static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point2f>& po
     // keep finite and cap absurdly huge radii for stats robustness
     std::vector<float> Rs;
     Rs.reserve(Rv.size());
-    for (float r : Rv) if (std::isfinite(r)) Rs.push_back(std::min(r, 1e6f));
+    for (float r : Rv) 
+    {
+        if (std::isfinite(r)) 
+        {
+            Rs.push_back(std::min(r, 1e6f));
+        }
+    }
 
     RadiusStats S{};
     S.n_samples = (int)Rs.size();
-    if (!Rs.empty()) {
+    if (!Rs.empty()) 
+    {
         S.r_min    = *std::min_element(Rs.begin(), Rs.end());
         S.r_p05    = percentile(Rs, 5.0);
         S.r_median = percentile(Rs, 50.0);
@@ -382,9 +446,14 @@ static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point2f>& po
         // harmonic mean on curvature (average kappa = mean(1/r)), then 1/mean_kappa
         double sumInv = 0.0;
         int cntInv = 0;
-        for (float r : Rs) { if (r > 1e-9f){ sumInv += 1.0/r; ++cntInv; } }
+        for (float r : Rs) 
+        { 
+            if (r > 1e-9f){ sumInv += 1.0/r; ++cntInv; } 
+        }
         S.r_hmean = (cntInv>0) ? float(cntInv / sumInv) : std::numeric_limits<float>::infinity();
-    } else {
+    } 
+    else 
+    {
         S.r_min=S.r_p05=S.r_median=S.r_mean=S.r_hmean=std::numeric_limits<float>::quiet_NaN();
     }
 
@@ -394,14 +463,18 @@ static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point2f>& po
 }
 
 // batch version: one stats record per polyline
-static std::vector<RadiusStats> curvatureRadiusForPolylines(const std::vector<std::vector<cv::Point2f>>& polys,
+static std::vector<RadiusStats> curvatureRadiusForPolylines(const std::vector<std::vector<cv::Point>>& polys,
                                                             float ds=1.0f, int stride=2, bool closed=false)
 {
-    std::vector<RadiusStats> out; out.reserve(polys.size());
-    for (auto& p : polys) out.push_back(curvatureRadiusForPolyline(p, ds, stride, closed));
+    std::vector<RadiusStats> out; 
+    out.reserve(polys.size());
+    for (auto& p : polys)
+    {
+        out.push_back(curvatureRadiusForPolyline(p, ds, stride, closed));
+    }
+        
     return out;
 }
-
 
 typedef enum 
 {
@@ -410,76 +483,147 @@ typedef enum
     AMBIG
 } Orientation;
 
-// to find the apex
-int findApex(std::vector<cv::Point> &curve, Orientation orientation)
+// to find the curve apex
+int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int lampCenterY)
 {
+    // apex at max or min x and approximately at lampCenterY
     int max_x = 0;
     int min_x = 10000;
     int apexIndex = 0;
+    int minDiff = 10;
+
     if (orientation == Orientation::AMBIG)
     {
         return 0;
     }
     for (size_t i = 0; i < curve.size(); i++)
     {
-        if (orientation == Orientation::RIGHT)
+        int diff = std::abs(lampCenterY - curve[i].y);
+        if (diff <= minDiff)
         {
-            if (curve[i].x <= min_x)
+            if (orientation == Orientation::RIGHT)
             {
-                min_x = curve[i].x;
-                apexIndex = i;
+                if (curve[i].x <= min_x)
+                {
+                    min_x = curve[i].x;
+                    apexIndex = i;
+                }
             }
-        }
-        else if (orientation == Orientation::LEFT)
-        {
-            if (curve[i].x >= max_x)
+            else if (orientation == Orientation::LEFT)
             {
-                max_x = curve[i].x;
-                apexIndex = i;
+                if (curve[i].x >= max_x)
+                {
+                    max_x = curve[i].x;
+                    apexIndex = i;
+                }
             }
         }
     }
     return apexIndex;
 }
 
-void LampImageAnalyser::CalculateRadii()
+void LampImageAnalyser::FindPixelMmRatio(int lampWidthPx)
 {
-    bool closed = false;        // set true for closed shapes
+    this->lamp.pixelMmRatio = lampWidthPx / standardLampWidth_mm;
+}
 
-    //cv::Mat temp = this->currentImageCv->clone();
+void LampImageAnalyser::SimplifyLampContours()
+{
+    std::vector<std::vector<cv::Point>> simples;
+    std::vector<std::vector<cv::Point>> trueContours;
+    int leftmostApexX(0), rightmostApexX(0);
 
-    std::vector<std::vector<cv::Point2f>> simples;
-    std::vector<int>colour_indices;
-    for (size_t i = 0; i < this->lamp.contours.size(); i++)
+    // find curve apexes
+    for (size_t i = 0; i < this->contours.size(); i++)
     {
-        if (lamp.contours[i].size() < 200)
+        // throwing away contours that do not resemble lamp walls
+        if (this->contours[i].size() < 200)
         {  
             continue;
         }
-        std::vector<cv::Point> contour = lamp.contours[i];
+        std::vector<cv::Point> contour = this->contours[i];
 
+        // sorting because some segments are repeating
         std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
             return a.y < b.y;
         });
         
         OpeningResult r = detectOpeningLR(contour);
         Orientation orient =  (r.opening == OpeningLR::Left ? Orientation::LEFT :
-                        r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
+                                r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
 
-        int apexIdx = findApex(contour, orient);
+        int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter.y);
+        
+        this->lamp.lampWallsApexes.push_back(contour[apexIdx]);
 
-        // only leave 70% from the curve centered at the apex
-        int index_begin = apexIdx - apexIdx*0.35;
-        int index_end = apexIdx + (contour.size() - apexIdx)*0.35;
+        if (leftmostApexX == 0 && rightmostApexX == 0)
+        {
+            leftmostApexX = contour[apexIdx].x;
+            rightmostApexX = contour[apexIdx].x;
+        }
+        else if (contour[apexIdx].x < leftmostApexX)
+        {
+            leftmostApexX = contour[apexIdx].x;
+        }
+        else if (contour[apexIdx].x > rightmostApexX)
+        {
+            rightmostApexX = contour[apexIdx].x;
+        }
 
-        colour_indices.push_back(i);
-        std::vector<cv::Point2f> simple(contour.begin() + index_begin, contour.begin() + index_end);
-        simples.push_back(simple);
-        //drawPolylineF(temp, simple, closed, colours[i+1], 2, cv::LINE_AA);
+        trueContours.push_back(contour);
     }
-    //cv::imshow("smoothed", temp);
 
-    auto stats = curvatureRadiusForPolylines(simples, /*ds=*/1.0f, /*stride=*/3, /*closed=*/false);
+    // find pixel to mm ratio from lamp width
+    this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
+    int pixels2mm = 2 * this->lamp.pixelMmRatio;
+
+    for (size_t i = 0; i < trueContours.size(); i++)
+    {
+        unsigned bestIdx_up(0), bestIdx_down(0);
+        unsigned bestAbs_up(10), bestAbs_down(10);// maximum tolerance to Y difference
+
+        cv::Point currentApex = this->lamp.lampWallsApexes[i];
+
+        int y_up = currentApex.y - pixels2mm;
+        int y_down = currentApex.y + pixels2mm;
+        for (size_t j = 0; j < trueContours[i].size(); j++)
+        {
+            if (j < trueContours[i].size() / 2)
+            {
+                int d_up = std::abs(trueContours[i][j].y - y_up);
+                if (d_up < bestAbs_up)
+                {
+                    bestAbs_up = d_up;
+                    bestIdx_up = j;
+                }
+            }
+            else
+            {
+                int d_down = std::abs(trueContours[i][j].y - y_down);
+                if (d_down < bestAbs_down)
+                {
+                    bestAbs_down = d_down;
+                    bestIdx_down = j;
+                }
+            }
+        }
+        std::vector<cv::Point> simple(trueContours[i].begin() + bestIdx_up, trueContours[i].begin() + bestIdx_down);
+        simples.push_back(simple);
+    }
+
+    this->lamp.lampContours = simples;
+
+    // cv::Mat drawn = this->currentImageCv->clone();
+    // for (size_t i = 0; i < this->lamp.lampContours.size(); ++i) 
+    // {
+    //     cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
+    // }
+    // *this->currentImageCv = std::move(drawn);
+}
+
+void LampImageAnalyser::CalculateRadii()
+{
+    auto stats = curvatureRadiusForPolylines(this->lamp.lampContours, /*ds=*/1.0f, /*stride=*/3, /*closed=*/false);
     
     QString radii;
 
@@ -491,17 +635,20 @@ void LampImageAnalyser::CalculateRadii()
         std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
         radii += QString::fromStdString(radius) + "; ";
         
-        cv::Point coordinates = cv::Point(lamp.contours[i][0].x - 50, lamp.contours[i][0].y + 20);
+        cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x - 50, this->lamp.lampContours[i][0].y + 20);
 
-        cv::putText(*this->currentImageCv, 
-                cv::String(radius), 
-                coordinates,
-                cv::FONT_HERSHEY_PLAIN,
-                0.8,
-                colours[colour_indices[i]]
-        );
 
-        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[colour_indices[i]]);
+        // cv::Mat drawn = this->currentImageCv->clone();
+        // cv::putText(drawn, 
+        //         cv::String(radius), 
+        //         coordinates,
+        //         cv::FONT_HERSHEY_PLAIN,
+        //         0.8,
+        //         colours[i]
+        // );
+        // *this->currentImageCv = std::move(drawn);
+
+        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[i]);
     }
     
     emit RadiiCalculated(radii);
@@ -657,114 +804,11 @@ ApexSanityResult ApexSanityCheck
 
 void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 {
-    uint8_t * buffer = (uint8_t*)inputImage.bits();
-    size_t width = inputImage.width();
-    size_t height = inputImage.height();
-    size_t stride = inputImage.bytesPerLine();
-
     try
     {
-        cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
-
-        cv::Mat imgGray;
-        cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
-
-        cv::Mat imgBlur;
-        cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.2);
-
-        cv::Mat cannyImg;
-        cv::Canny(imgBlur, cannyImg, 0, 100);
-
-        // TRACING
-        cv::Mat toTrace = cannyImg.clone();
-        this->lamp.electrodes.clear();
-        cv::findContours(toTrace, this->lamp.electrodes, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-        std::sort(this->lamp.electrodes.begin(), this->lamp.electrodes.end(),
-              [](auto &a, auto &b){ return a.size() > b.size(); });
-        
-        cv::Mat coloredEdges; 
-        cv::cvtColor(imgGray, coloredEdges, cv::COLOR_GRAY2BGR);
-
-        // find vertices
-        std::vector<cv::Point> apexesVect;
-        ApexSanityResult apexError = ApexSanityResult::APEX_OK;
-        for (auto electrode : this->lamp.electrodes) 
-        {
-            // Approximate polyline with straight segments
-            std::vector<cv::Point> approx;
-            double epsilon = 10.0; // Approximation accuracy
-            cv::approxPolyDP(electrode, approx, epsilon, false);
-
-            // Find angles between consecutive segments
-            double smallestAngle = 45;
-            cv::Point apex(0,0);
-
-            for (size_t i = 1; i + 1 < approx.size(); ++i) {
-                // Build direction vectors along the two adjacent segments
-                cv::Point2f v1 = cv::Point2f(approx[i].x - approx[i-1].x,
-                                            approx[i].y - approx[i-1].y);
-                cv::Point2f v2 = cv::Point2f(approx[i+1].x - approx[i].x,
-                                            approx[i+1].y - approx[i].y);
-
-                // Optional: ignore tiny/degenerate segments to avoid noisy angles
-                if (cv::norm(v1) < 1e-6 || cv::norm(v2) < 1e-6) continue;
-
-                double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
-                if (interior_deg < smallestAngle && interior_deg > 5.0)
-                {
-                    smallestAngle = interior_deg;
-                    apex = approx[i];
-
-                }
-            }
-            // the apex is not sharp enough
-            if (apex.x == 0 && apex.y == 0)
-            {
-                continue;
-            }
-
-            // sanity check
-            std::vector<cv::Point> approx_sorted = approx;
-            // sometimes the lamp.contours have double segments or go back and forth
-            std::sort(approx_sorted.begin(), approx_sorted.end(), [](const cv::Point& a, const cv::Point& b) {
-                return a.x < b.x;
-            });
-            ApexSanityResult isApexOk = ApexSanityCheck(approx_sorted, apex, imgGray.rows);
-
-            if (isApexOk == ApexSanityResult::APEX_OK)
-            {
-                apexesVect.push_back(apex);
-            }
-            else
-            {
-                apexError = isApexOk;
-                break;
-            }
-        }
-
-        if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
-        {
-            emit ElectrodesAnalysisFailed();
-            return;
-        }
-
-        for (cv::Point ap : apexesVect)
-        {
-            cv::circle(coloredEdges, ap, 3, cv::Scalar(0, 0, 255));
-        }
-        //cv::imshow("Apexes", coloredEdges);
-
-        QPair<cv::Point, cv::Point> apexes;
-        apexes.first = apexesVect[0];
-        apexes.second = apexesVect[1];
-        
-        auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
-        this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
-
-        PaintVertice(apexes.first);
-        PaintVertice(apexes.second);
-
-        this->lamp.electrodesApexes = apexes;
+        this->CalculateElectrodes(inputImage);
+        PaintVertice(this->lamp.electrodesApexes.first);
+        PaintVertice(this->lamp.electrodesApexes.second);
         // cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
         // //qDebug() << "distance" << distance << "angle" << angle;
         // qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
@@ -794,4 +838,103 @@ QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPo
     }
 
     return QPair(distance, angle);
+}
+
+void LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
+{
+    uint8_t * buffer = (uint8_t*)inputImage.bits();
+    size_t width = inputImage.width();
+    size_t height = inputImage.height();
+    size_t stride = inputImage.bytesPerLine();
+
+    cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
+
+    cv::Mat imgGray;
+    cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
+
+    cv::Mat imgBlur;
+    cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.2);
+
+    cv::Mat cannyImg;
+    cv::Canny(imgBlur, cannyImg, 0, 100);
+
+    // TRACING
+    cv::Mat toTrace = cannyImg.clone();
+    this->lamp.electrodes.clear();
+    cv::findContours(toTrace, this->lamp.electrodes, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    std::sort(this->lamp.electrodes.begin(), this->lamp.electrodes.end(),
+            [](auto &a, auto &b){ return a.size() > b.size(); });
+
+    // find vertices
+    std::vector<cv::Point> apexesVect;
+    ApexSanityResult apexError = ApexSanityResult::APEX_OK;
+    for (auto electrode : this->lamp.electrodes) 
+    {
+        // Approximate polyline with straight segments
+        std::vector<cv::Point> approx;
+        double epsilon = 10.0; // Approximation accuracy
+        cv::approxPolyDP(electrode, approx, epsilon, false);
+
+        // Find angles between consecutive segments
+        double smallestAngle = 45;
+        cv::Point apex(0,0);
+
+        for (size_t i = 1; i + 1 < approx.size(); ++i) {
+            // Build direction vectors along the two adjacent segments
+            cv::Point2f v1 = cv::Point2f(approx[i].x - approx[i-1].x,
+                                        approx[i].y - approx[i-1].y);
+            cv::Point2f v2 = cv::Point2f(approx[i+1].x - approx[i].x,
+                                        approx[i+1].y - approx[i].y);
+
+            // Optional: ignore tiny/degenerate segments to avoid noisy angles
+            if (cv::norm(v1) < 1e-6 || cv::norm(v2) < 1e-6) continue;
+
+            double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
+            if (interior_deg < smallestAngle && interior_deg > 5.0)
+            {
+                smallestAngle = interior_deg;
+                apex = approx[i];
+
+            }
+        }
+        // the apex is not sharp enough
+        if (apex.x == 0 && apex.y == 0)
+        {
+            continue;
+        }
+
+        // sanity check
+        std::vector<cv::Point> approx_sorted = approx;
+        // sometimes the lamp.contours have double segments or go back and forth
+        std::sort(approx_sorted.begin(), approx_sorted.end(), [](const cv::Point& a, const cv::Point& b) {
+            return a.x < b.x;
+        });
+        ApexSanityResult isApexOk = ApexSanityCheck(approx_sorted, apex, imgGray.rows);
+
+        if (isApexOk == ApexSanityResult::APEX_OK)
+        {
+            apexesVect.push_back(apex);
+        }
+        else
+        {
+            apexError = isApexOk;
+            break;
+        }
+    }
+
+    if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
+    {
+        emit ElectrodesAnalysisFailed();
+        return;
+    }
+
+    QPair<cv::Point, cv::Point> apexes;
+    apexes.first = apexesVect[0];
+    apexes.second = apexesVect[1];
+    
+    auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
+    this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
+
+    this->lamp.electrodesApexes = apexes;
+
 }
