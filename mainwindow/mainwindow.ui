@@ -126,30 +126,7 @@
     </item>
     <item>
      <layout class="QGridLayout" name="gridLayout_5">
-      <item row="0" column="1">
-       <widget class="QLabel" name="label">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string>Manual functions give results in pixels!</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QLabel" name="labelElectrodes">
-        <property name="text">
-         <string/>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
+      <item row="2" column="0">
        <widget class="QPushButton" name="pushButtonManualSelection">
         <property name="enabled">
          <bool>false</bool>
@@ -165,61 +142,32 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelManualFunctitons">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelElectrodesAnalysis">
         <property name="text">
-         <string>Manual functions:</string>
+         <string>Electrodes analysis:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
-       <widget class="QPushButton" name="pushButtonCurveAnalysis">
-        <property name="text">
-         <string>Run Walls Analysis</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QPushButton" name="pushButtonElectrodes">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string>Process electrodes</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
+      <item row="2" column="1">
        <widget class="QLabel" name="labelDistance">
         <property name="text">
          <string>Select two dots to calculate distance</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="2">
-       <spacer name="horizontalSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
+      <item row="1" column="1">
+       <widget class="QLabel" name="labelElectrodesResults">
+        <property name="text">
+         <string/>
         </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
+        <property name="wordWrap">
+         <bool>true</bool>
         </property>
-       </spacer>
+       </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="QLabel" name="labelRadii">
+      <item row="0" column="1">
+       <widget class="QLabel" name="labelLampResults">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
           <horstretch>0</horstretch>
@@ -231,6 +179,13 @@
         </property>
         <property name="wordWrap">
          <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelWallsAnalysis">
+        <property name="text">
+         <string>Lamp shape analysis:</string>
         </property>
        </widget>
       </item>

@@ -161,9 +161,28 @@ void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
         }
         this->SimplifyLampContours();
 
-        this->CalculateRadii();
+        std::vector<float> radii;
+        std::vector<QPoint> centers;
+        this->CalculateRadii(&radii, &centers);
 
-        emit ImageProcessed(this->currentImageCv);
+        std::vector<float> radiiMm;
+        for (float radius : radii)
+        {
+            float radiusMm = 0;
+            if (this->lamp.pixelMmRatio != 0)
+            {
+                radiusMm = radius / this->lamp.pixelMmRatio;
+            }
+            radiiMm.push_back(radiusMm);
+        }
+
+        QPair<double, double> lampWalls = this->CalculateWallThickness();
+        this->lamp.wallsCenters = centers;
+        this->lamp.wallsRadii = radiiMm;
+        this->lamp.wallsThickness = lampWalls;
+        
+        //emit ImageProcessed(this->currentImageCv);
+        // emit LampWallsProcessed(centers, radiiMm, lampWalls);
     }
     catch(const cv::Exception e)
     {
@@ -232,7 +251,7 @@ void LampImageAnalyser::PaintVertice(const cv::Point& imgPt)
 void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col)
 {
     cv::Mat circleImg = this->currentImageCv->clone();
-    cv::circle(*this->currentImageCv, point, 3, col, cv::FILLED);
+    cv::circle(circleImg, point, 3, col, cv::FILLED);
     cv::String coordinates = cv::String(std::format("({},{})", point.x, point.y));
 
     // cv::putText(*this->currentImageCv, 
@@ -555,7 +574,7 @@ void LampImageAnalyser::SimplifyLampContours()
 
         int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter.y);
         
-        this->lamp.lampWallsApexes.push_back(contour[apexIdx]);
+        this->lamp.wallsApexes.push_back(contour[apexIdx]);
 
         if (leftmostApexX == 0 && rightmostApexX == 0)
         {
@@ -583,7 +602,7 @@ void LampImageAnalyser::SimplifyLampContours()
         unsigned bestIdx_up(0), bestIdx_down(0);
         unsigned bestAbs_up(10), bestAbs_down(10);// maximum tolerance to Y difference
 
-        cv::Point currentApex = this->lamp.lampWallsApexes[i];
+        cv::Point currentApex = this->lamp.wallsApexes[i];
 
         int y_up = currentApex.y - pixels2mm;
         int y_down = currentApex.y + pixels2mm;
@@ -622,13 +641,14 @@ void LampImageAnalyser::SimplifyLampContours()
     *this->currentImageCv = std::move(drawn);
 }
 
-void LampImageAnalyser::CalculateRadii()
+void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QPoint>* centers)
 {
     auto stats = curvatureRadiusForPolylines(this->lamp.lampContours, /*ds=*/1.0f, /*stride=*/3, /*closed=*/false);
     
-    QString radii;
+    QString radiiString;
 
     cv::Mat drawn = this->currentImageCv->clone();
+
     for (size_t i=0; i<stats.size(); ++i) 
     {
         const auto& s = stats[i];
@@ -636,11 +656,11 @@ void LampImageAnalyser::CalculateRadii()
 
         std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
         std::string curveNumber(std::format("({})", i + 1));
-        radii += QString::fromStdString(radius) + "; ";
+        radiiString += QString::fromStdString(radius) + "; ";
         
         cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
 
-        cv::putText(drawn, 
+        cv::putText(*this->currentImageCv, 
                 cv::String(curveNumber), 
                 coordinates,
                 cv::FONT_HERSHEY_SIMPLEX,
@@ -649,10 +669,12 @@ void LampImageAnalyser::CalculateRadii()
         );
 
         PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[i]);
+
+        radii->push_back(s.r_fit);
+        centers->push_back(QPoint(coordinates.x, coordinates.y));
     }
-    
-    *this->currentImageCv = std::move(drawn);
-    emit RadiiCalculated(radii);
+
+    //emit RadiiCalculated(radii);
 }
 
 // Signed turn: left turn +, right turn -, range (-180, 180]
@@ -812,10 +834,11 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
         {
             PaintVertice(this->lamp.electrodesApexes.first);
             PaintVertice(this->lamp.electrodesApexes.second);
-            QPoint coordFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
-            QPoint coordSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
-            size_t distance = this->lamp.electrodesDistance;
-            emit ElectrodesProcessed(coordFirst, coordSecond, distance);
+            // QPoint coordFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
+            // QPoint coordSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
+            // double distance = this->lamp.electrodesDistancePx;
+            // double angle = this->lamp.electrodesAngle;
+            // emit ElectrodesProcessed(coordFirst, coordSecond, distance, angle);
             // cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
             // //qDebug() << "distance" << distance << "angle" << angle;
             // qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
@@ -945,8 +968,62 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
         
         auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
         this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
-        this->lamp.electrodesDistance = static_cast<size_t>(distance);
+
+        this->lamp.electrodesDistancePx = distance;
         this->lamp.electrodesApexes = apexes;
+        this->lamp.electrodesAngle = angle;
     }
     return success;
+}
+
+QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
+{
+    QPair<double, double> result = QPair<size_t, size_t>(0, 0);
+
+    if ((this->lamp.pixelMmRatio != 0) && !(this->lamp.wallsApexes.empty()))
+    {
+        std::vector<cv::Point> edgesLeft, edgesRight;
+        for (cv::Point apex : this->lamp.wallsApexes)
+        {
+            if (apex.x < this->lamp.lampCenter.x && edgesLeft.size() < 2)
+            {
+                edgesLeft.push_back(apex);
+            }
+            else if (apex.x > this->lamp.lampCenter.x && edgesRight.size() < 2)
+            {
+                edgesRight.push_back(apex);
+            }
+        }
+
+        if (edgesLeft.size() == 2 && edgesRight.size() == 2)
+        {
+            auto [wallLeftPx, angleLeft] = CalculateDistanceAngle(edgesLeft[0], edgesLeft[1]);
+            auto [wallRightPx, angleRight] = CalculateDistanceAngle(edgesRight[0], edgesRight[1]);
+
+            double ratio = this->lamp.pixelMmRatio;
+
+            double wallLeftMm = ratio != 0 ? wallLeftPx / this->lamp.pixelMmRatio : 0;
+            double wallRightMm = ratio != 0 ? wallRightPx / this->lamp.pixelMmRatio : 0;
+            result.first = wallLeftMm;
+            result.second = wallRightMm;
+        }
+    }
+    return result;
+}
+
+void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
+{
+    this->ProcessElectrodes(imgToProcess);
+    this->ProcessLampWalls(imgToProcess);
+
+    double ratio = this->lamp.pixelMmRatio;
+    double electrodesDistanceMm = ratio != 0 ? this->lamp.electrodesDistancePx / ratio : 0;
+    QPoint coordElectrodeFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
+    QPoint coordElectrodeSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
+    double angle = this->lamp.electrodesAngle;
+   
+    emit ElectrodesProcessed(coordElectrodeFirst, coordElectrodeSecond, electrodesDistanceMm, angle);
+    emit LampWallsProcessed(this->lamp.wallsCenters, this->lamp.wallsRadii, this->lamp.wallsThickness);
+
+    emit ImageProcessed(this->currentImageCv);
 }

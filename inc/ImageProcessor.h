@@ -9,14 +9,6 @@ class MainWindow;
 class GLVisualisation;
 class LampImageAnalyser;
 
-typedef struct 
-{
-    std::vector<QString> radii;
-    std::vector<QString> thickness;
-    QString electrodesDist;
-} ResultsType;
-
-
 typedef enum
 {
     FAILURE_IMG_TOO_SMALL,
@@ -39,8 +31,6 @@ public:
 
 signals:
     void DistanceCalculated(float distance, float angle);
-    void PrintRadii(QString radii);
-    void PrintFullResults(ResultsType results);
     void AnalysisFailed(AnalysisFailure failure);
 
 public slots:

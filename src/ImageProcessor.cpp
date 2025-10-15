@@ -17,7 +17,7 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
 
     connect(this->analyser.get(), &LampImageAnalyser::ShowVerticeOnImage, this, &ImageProcessor::ShowVerticeOnImage);
     connect(this->analyser.get(), &LampImageAnalyser::ImageProcessed, this, &ImageProcessor::ShowEdgedImage);
-    connect(this->analyser.get(), &LampImageAnalyser::RadiiCalculated, this->mainWindow,  &MainWindow::PrintRadii);
+    connect(this->analyser.get(), &LampImageAnalyser::LampWallsProcessed, this->mainWindow,  &MainWindow::PrintLampResults);
     connect(this->analyser.get(), &LampImageAnalyser::ElectrodesAnalysisFailed, this, &ImageProcessor::ElectrodesProcessingFail);
     connect(this->analyser.get(), &LampImageAnalyser::WallsAnalysisFailed, this, &ImageProcessor::WallsAnalysisFailSlot);
     connect(this->analyser.get(), &LampImageAnalyser::ElectrodesProcessed, this->mainWindow, &MainWindow::PrintElectrodes);
@@ -168,11 +168,7 @@ void ImageProcessor::RunFullAnalysis()
 {
     QImage imgToProcess = this->originalImage.copy();
     // find electrodes distance
-    
-    // find curve radii
-
-    // find wall thickness
-    // convert to mm
+    this->analyser->RunFullAnalysis(imgToProcess);
 }
 
 void ImageProcessor::ProcessElectrodesSlot()

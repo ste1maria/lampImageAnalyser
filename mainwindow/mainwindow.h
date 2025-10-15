@@ -21,9 +21,19 @@ public:
 
 public slots:
     void ShowVerticesDistanceAngle(float distance, float angle);
-    void PrintRadii(QString radii);
-    void PrintFullResultsSlot(ResultsType results);
-    void PrintElectrodes(QPoint coordFirst, QPoint coordSecond, size_t distance);
+    void PrintLampResults
+    (   std::vector<QPoint> centers, 
+        std::vector<float> radii, 
+        QPair<double, double> thickness
+    );
+
+    void PrintElectrodes
+    (
+        QPoint coordFirst, 
+        QPoint coordSecond, 
+        double distance, 
+        double angle
+    );
 
 private slots:
     void UploadImage();

@@ -22,28 +22,23 @@ MainWindow::MainWindow(QWidget *parent)
     ui->layoutImageWidget->addWidget(this->visualisation);
     this->imgProcessor->SetVisualizationWidget(this->visualisation);
 
-    ui->pushButtonCurveAnalysis->setEnabled(false);
     ui->pushButtonRunAnalysis->setEnabled(false);
-    ui->pushButtonElectrodes->setEnabled(false);
     ui->pushButtonManualSelection->setEnabled(false);
     ui->pushButtonReset->setEnabled(false);
     ui->pushButtonSaveResults->setEnabled(false);
     ui->pushButtonSaveImage->setEnabled(false);
     ui->labelDistance->clear();
-    ui->labelRadii->clear();
+    ui->labelLampResults->clear();
+    ui->labelElectrodesResults->clear();
 
-    connect(ui->pushButtonCurveAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunEdgeDetectionSlot);
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
     connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
     connect(ui->pushButtonReset, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
     connect(ui->pushButtonRunAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunFullAnalysis);
-    connect(ui->pushButtonElectrodes, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::ProcessElectrodesSlot);
 
     connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
-    connect(this->imgProcessor.get(), &ImageProcessor::PrintRadii, this, &MainWindow::PrintRadii);
     connect(this->imgProcessor.get(), &ImageProcessor::AnalysisFailed, this, &MainWindow::AnalysisFailedSlot);
-    
 }
 
 MainWindow::~MainWindow()
@@ -68,16 +63,14 @@ void MainWindow::UploadImage()
     {
         if (this->imgProcessor->UploadImage(fileName))
         {
-            ui->pushButtonCurveAnalysis->setEnabled(true);
             ui->pushButtonRunAnalysis->setEnabled(true);
-            ui->pushButtonElectrodes->setEnabled(true);
             ui->pushButtonManualSelection->setEnabled(true);
             ui->pushButtonReset->setEnabled(true);
             ui->pushButtonSaveResults->setEnabled(true);
             ui->pushButtonSaveImage->setEnabled(true);
 
-            ui->labelElectrodes->clear();
-            ui->labelRadii->clear();
+            ui->labelElectrodesResults->clear();
+            ui->labelLampResults->clear();
             ui->labelDistance->setText("Select two dots to calculate distance");
         }
     }
@@ -88,8 +81,8 @@ void MainWindow::ResetImageSlot()
     this->imgProcessor->ResetImage();
     ui->labelFullAnalysis->clear();
     ui->labelDistance->setText("Select two dots to calculate distance");
-    ui->labelElectrodes->clear();
-    ui->labelRadii->clear();
+    ui->labelElectrodesResults->clear();
+    ui->labelLampResults->clear();
 
 }
 
@@ -98,16 +91,23 @@ void MainWindow::ShowVerticesDistanceAngle(float distance, float angle)
     ui->labelDistance->setText(QString("Distance: %1 px; Angle: %2°").arg(distance).arg(angle));
 }
 
-void MainWindow::PrintRadii(QString radii)
-{
-    ui->labelRadii->setText(radii);
-}
 
-
-void MainWindow::PrintFullResultsSlot(ResultsType results)
+void MainWindow::PrintLampResults
+(
+    std::vector<QPoint> centers, 
+    std::vector<float> radii, 
+    QPair<double, double> thickness
+)
 {
     QString resultsString;
-    resultsString += QString("Radius 1 \t ");
+    for (int i = 0; i < centers.size(); i++)
+    {
+        resultsString += QString("R(%1)=%2 mm at (%3, %4); ").arg(i+1).arg(radii[i], 0, 'f', 2).arg(centers[i].x()).arg(centers[i].y());
+    }
+    resultsString += QString("\n\rLeft wall %1 mm, right wall %2 mm")
+                            .arg(thickness.first, 0, 'f', 2)
+                            .arg(thickness.second, 0, 'f', 2);
+    ui->labelLampResults->setText(resultsString);
 }
 
 void MainWindow::AnalysisFailedSlot(AnalysisFailure failure)
@@ -116,9 +116,7 @@ void MainWindow::AnalysisFailedSlot(AnalysisFailure failure)
     QString messageText = "unknown error, sorry";
     if (failure == AnalysisFailure::FAILURE_IMG_TOO_SMALL)
     {
-        ui->pushButtonCurveAnalysis->setEnabled(false);
         ui->pushButtonRunAnalysis->setEnabled(false);
-        ui->pushButtonElectrodes->setEnabled(false);
         ui->labelDistance->clear();
         messageText = "Uploaded image is too small for correct analysis.";
     }
@@ -151,14 +149,21 @@ void MainWindow::ResetManualSelection()
     connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
 }
 
-void MainWindow::PrintElectrodes(QPoint coordFirst, QPoint coordSecond, size_t distance)
+void MainWindow::PrintElectrodes
+(
+    QPoint coordFirst, 
+    QPoint coordSecond, 
+    double distance, 
+    double angle
+)
 {
     QString electrodesResult = 
-        QString::fromStdString(std::format("Coordinates: ({},{}); ({},{}); distance: {} px", 
-                                            coordFirst.x(), 
-                                            coordFirst.y(),
-                                            coordSecond.x(),
-                                            coordSecond.y(),
-                                            distance));
-    ui->labelElectrodes->setText(electrodesResult);
+        QString("Coordinates: (%1,%2); (%3,%4); distance: %5 mm; angle %6°")
+                                            .arg(coordFirst.x()) 
+                                            .arg(coordFirst.y())
+                                            .arg(coordSecond.x())
+                                            .arg(coordSecond.y())
+                                            .arg(distance, 0, 'f', 2)
+                                            .arg(angle, 0, 'f', 1);
+    ui->labelElectrodesResults->setText(electrodesResult);
 }
