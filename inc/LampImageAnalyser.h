@@ -27,10 +27,10 @@ public:
     void SetCurrentImage(const QImage& image);
     void ResetImage();
 
-    void ProcessLampWalls(QImage& inputImage);
+    bool ProcessLampWalls(QImage& inputImage);
     void PaintVertice(const QPointF& imgPt);
     void PaintVertice(const cv::Point& imgPt);
-    void ProcessElectrodes(QImage& inputImage);
+    bool ProcessElectrodes(QImage& inputImage);
     void RunFullAnalysis(QImage& imgToProcess);
     
     QPair<float, float> CalculateDistanceAngle(cv::Point start, cv::Point end);

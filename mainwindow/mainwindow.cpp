@@ -102,7 +102,7 @@ void MainWindow::PrintLampResults
     QString resultsString;
     for (int i = 0; i < centers.size(); i++)
     {
-        resultsString += QString("R(%1)=%2 mm at (%3, %4); ").arg(i+1).arg(radii[i], 0, 'f', 2).arg(centers[i].x()).arg(centers[i].y());
+        resultsString += QString("R(%1)=%2 mm at (%3, %4);\n\r").arg(i+1).arg(radii[i], 0, 'f', 2).arg(centers[i].x()).arg(centers[i].y());
     }
     resultsString += QString("\n\rLeft wall %1 mm, right wall %2 mm")
                             .arg(thickness.first, 0, 'f', 2)

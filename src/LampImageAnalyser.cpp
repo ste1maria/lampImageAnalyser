@@ -11,6 +11,7 @@
 #include "curveAnalysis.hpp"
 
 #include <unordered_set>
+#include <algorithm>
 
 int thresh = 5;
 
@@ -91,8 +92,9 @@ cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
     return skel;
 }
 
-void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
+bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
 {
+    bool success = true;
     uint8_t * buffer = (uint8_t*)inputImage.bits();
     size_t width = inputImage.width();
     size_t height = inputImage.height();
@@ -152,46 +154,61 @@ void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
         if (this->contours.size() > 10 || this->contours.size() < 4)
         {
             emit WallsAnalysisFailed();
-            return;
+            success = false;
         }
-
-        if (this->lamp.lampCenter == this->lamp.undeterminedPoint)
+        else 
         {
-            this->CalculateElectrodes(inputImage);
-        }
-        this->SimplifyLampContours();
-
-        std::vector<float> radii;
-        std::vector<QPoint> centers;
-        this->CalculateRadii(&radii, &centers);
-
-        std::vector<float> radiiMm;
-        for (float radius : radii)
-        {
-            float radiusMm = 0;
-            if (this->lamp.pixelMmRatio != 0)
+            if (this->lamp.lampCenter == this->lamp.undeterminedPoint)
             {
-                radiusMm = radius / this->lamp.pixelMmRatio;
+                bool result = this->CalculateElectrodes(inputImage);
+                if (result == false)
+                {
+                    success = false;
+                }
             }
-            radiiMm.push_back(radiusMm);
+            if (success)
+            {
+                this->SimplifyLampContours();
+
+                std::vector<float> radii;
+                std::vector<QPoint> centers;
+                this->CalculateRadii(&radii, &centers);
+
+                std::vector<float> radiiMm;
+                for (float radius : radii)
+                {
+                    float radiusMm = 0;
+                    if (this->lamp.pixelMmRatio != 0)
+                    {
+                        radiusMm = radius / this->lamp.pixelMmRatio;
+                    }
+                    radiiMm.push_back(radiusMm);
+                }
+
+                QPair<double, double> lampWalls = this->CalculateWallThickness();
+                this->lamp.wallsCenters = centers;
+                this->lamp.wallsRadii = radiiMm;
+                this->lamp.wallsThickness = lampWalls;
+                
+                //emit ImageProcessed(this->currentImageCv);
+                // emit LampWallsProcessed(centers, radiiMm, lampWalls);
+            }
+            
         }
 
-        QPair<double, double> lampWalls = this->CalculateWallThickness();
-        this->lamp.wallsCenters = centers;
-        this->lamp.wallsRadii = radiiMm;
-        this->lamp.wallsThickness = lampWalls;
         
-        //emit ImageProcessed(this->currentImageCv);
-        // emit LampWallsProcessed(centers, radiiMm, lampWalls);
     }
     catch(const cv::Exception e)
     {
         qDebug() << e.what() << '\n';
+        success = false;
     }    
     catch(const std::exception e)
     {
         qDebug() << e.what() << '\n';
+        success = false;
     }
+    return success;
 }
 
 void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
@@ -545,6 +562,7 @@ int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int la
 void LampImageAnalyser::FindPixelMmRatio(int lampWidthPx)
 {
     this->lamp.pixelMmRatio = lampWidthPx / standardLampWidth_mm;
+    qDebug() << "width" << lampWidthPx;
 }
 
 void LampImageAnalyser::SimplifyLampContours()
@@ -825,7 +843,7 @@ ApexSanityResult ApexSanityCheck
     return result;
 }
 
-void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
+bool LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 {
     try
     {
@@ -843,10 +861,12 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
             // //qDebug() << "distance" << distance << "angle" << angle;
             // qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
         }
+        return success;
     }
     catch(...)
     {
         qDebug() << "Exception while processing lamp electrodes";
+        return false;
     }
 
 }
@@ -886,22 +906,84 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
 
     cv::Mat imgBlur;
-    cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.2);
+    cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.7);
 
     cv::Mat cannyImg;
-    cv::Canny(imgBlur, cannyImg, 0, 100);
+    cv::Canny(imgBlur, cannyImg, 0, 75);
 
     // TRACING
     cv::Mat toTrace = cannyImg.clone();
+    std::vector<std::vector<cv::Point>> electrodesTemp;
+    cv::findContours(toTrace, electrodesTemp, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    cv::imshow("traced", toTrace);
+
+    std::vector<std::vector<cv::Point>> electrodesSorted;
+    // sort because sometimes contours contain repeating segments
+    for (auto electrode : electrodesTemp)
+    {
+        std::vector<cv::Point> electrodeToSort = electrode;
+        // sometimes the lamp.contours have double segments or go back and forth
+        std::sort(electrodeToSort.begin(), electrodeToSort.end(), [](const cv::Point& a, const cv::Point& b) {
+            return a.x < b.x;
+        });
+        electrodesSorted.push_back(electrodeToSort);
+    }
+    
+    // join broken contours
     this->lamp.electrodes.clear();
-    cv::findContours(toTrace, this->lamp.electrodes, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-    std::sort(this->lamp.electrodes.begin(), this->lamp.electrodes.end(),
-            [](auto &a, auto &b){ return a.size() > b.size(); });
+
+    std::vector<int> alreadyJoined;
+    for (int i = 0; i < electrodesSorted.size(); i++)
+    {
+        if (std::find(alreadyJoined.begin(), alreadyJoined.end(), i) != alreadyJoined.end())
+        {
+            continue;
+        }
+
+        if (electrodesSorted[i].size() < 60)
+        {
+            continue;
+        }
+
+        bool toJoin = false;
+
+        cv::Point ptBegin, ptEnd;
+        float pointsTolerance = 5.0; // px
+        for (int j = 0; j < electrodesSorted.size(); j++)
+        {
+            if (j == i)
+            {
+                continue;
+            }
+            float distanceBegin = sqrt( pow((electrodesSorted[j].front().x - electrodesSorted[i].back().x), 2) +
+                                        pow((electrodesSorted[j].front().y - electrodesSorted[i].back().y), 2)
+                                    );
+            float distanceEnd = sqrt( pow((electrodesSorted[j].back().x - electrodesSorted[i].front().x), 2) +
+                            pow((electrodesSorted[j].back().y - electrodesSorted[i].front().y), 2)
+                        );
+            if (distanceBegin < pointsTolerance || distanceEnd < pointsTolerance)
+            {
+                toJoin = true;
+                electrodesSorted[i].insert(electrodesSorted[i].end(), electrodesSorted[j].begin(), electrodesSorted[j].end());
+                std::sort(electrodesSorted[i].begin(), electrodesSorted[i].end(), 
+                            [](const cv::Point& a, const cv::Point& b) {
+                                return a.x < b.x;
+                            });
+                this->lamp.electrodes.push_back(electrodesSorted[i]);
+                alreadyJoined.push_back(i);
+                alreadyJoined.push_back(j);
+            }
+        }
+        if (!toJoin)
+        {
+            this->lamp.electrodes.push_back(electrodesSorted[i]);
+        }
+    }
 
     // find vertices
     std::vector<cv::Point> apexesVect;
     ApexSanityResult apexError = ApexSanityResult::APEX_OK;
-    for (auto electrode : this->lamp.electrodes) 
+    for (auto electrode : this->lamp.electrodes)
     {
         // Approximate polyline with straight segments
         std::vector<cv::Point> approx;
@@ -937,12 +1019,8 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
         }
 
         // sanity check
-        std::vector<cv::Point> approx_sorted = approx;
-        // sometimes the lamp.contours have double segments or go back and forth
-        std::sort(approx_sorted.begin(), approx_sorted.end(), [](const cv::Point& a, const cv::Point& b) {
-            return a.x < b.x;
-        });
-        ApexSanityResult isApexOk = ApexSanityCheck(approx_sorted, apex, imgGray.rows);
+
+        ApexSanityResult isApexOk = ApexSanityCheck(approx, apex, imgGray.rows);
 
         if (isApexOk == ApexSanityResult::APEX_OK)
         {
@@ -1013,17 +1091,25 @@ QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
 
 void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
 {
-    this->ProcessElectrodes(imgToProcess);
-    this->ProcessLampWalls(imgToProcess);
+    bool success = true;
+    success = this->ProcessElectrodes(imgToProcess);
+    if (success)
+    {
+        success = this->ProcessLampWalls(imgToProcess);
 
-    double ratio = this->lamp.pixelMmRatio;
-    double electrodesDistanceMm = ratio != 0 ? this->lamp.electrodesDistancePx / ratio : 0;
-    QPoint coordElectrodeFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
-    QPoint coordElectrodeSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
-    double angle = this->lamp.electrodesAngle;
-   
-    emit ElectrodesProcessed(coordElectrodeFirst, coordElectrodeSecond, electrodesDistanceMm, angle);
-    emit LampWallsProcessed(this->lamp.wallsCenters, this->lamp.wallsRadii, this->lamp.wallsThickness);
+        if (success)
+        {
+            double ratio = this->lamp.pixelMmRatio;
+            double electrodesDistanceMm = ratio != 0 ? this->lamp.electrodesDistancePx / ratio : 0;
+            QPoint coordElectrodeFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
+            QPoint coordElectrodeSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
+            double angle = this->lamp.electrodesAngle;
+        
+            emit ElectrodesProcessed(coordElectrodeFirst, coordElectrodeSecond, electrodesDistanceMm, angle);
+            emit LampWallsProcessed(this->lamp.wallsCenters, this->lamp.wallsRadii, this->lamp.wallsThickness);
 
-    emit ImageProcessed(this->currentImageCv);
+            emit ImageProcessed(this->currentImageCv);
+        }
+    }
+
 }
