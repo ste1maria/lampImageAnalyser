@@ -46,18 +46,20 @@ signals:
 public slots:
     void SaveCalculations();
     void SaveImage();
+
     void RunEdgeDetectionSlot();
+    void RunFullAnalysis();
+    void ProcessElectrodesSlot();
+
+    void StartManualSelection();
+    void ResetManualSelection();
+
     void PaintVerticeSlot(const QPointF& imgPt);
     void ShowVerticeOnImage(std::shared_ptr<cv::Mat> img);
     void ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage);
-    void PrintRadiiSlot(QString radii);
-    void RunFullAnalysis();
-    void ProcessElectrodesSlot();
-    void ElectrodesProcessingFail();
-    void StartManualSelection();
-    void ResetManualSelection();
-    void WallsAnalysisFailSlot();
 
+    void ElectrodesProcessingFail();
+    void WallsAnalysisFailSlot();
 
 private:
     MainWindow *mainWindow;

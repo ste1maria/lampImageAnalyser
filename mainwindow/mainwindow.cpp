@@ -75,6 +75,9 @@ void MainWindow::UploadImage()
             ui->pushButtonReset->setEnabled(true);
             ui->pushButtonSaveResults->setEnabled(true);
             ui->pushButtonSaveImage->setEnabled(true);
+
+            ui->labelElectrodes->clear();
+            ui->labelRadii->clear();
             ui->labelDistance->setText("Select two dots to calculate distance");
         }
     }
@@ -146,4 +149,16 @@ void MainWindow::ResetManualSelection()
     ui->labelDistance->setText("Select two dots to calculate distance");
     
     connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
+}
+
+void MainWindow::PrintElectrodes(QPoint coordFirst, QPoint coordSecond, size_t distance)
+{
+    QString electrodesResult = 
+        QString::fromStdString(std::format("Coordinates: ({},{}); ({},{}); distance: {} px", 
+                                            coordFirst.x(), 
+                                            coordFirst.y(),
+                                            coordSecond.x(),
+                                            coordSecond.y(),
+                                            distance));
+    ui->labelElectrodes->setText(electrodesResult);
 }

@@ -42,6 +42,7 @@ signals:
     void RadiiCalculated(QString radii);
     void ElectrodesAnalysisFailed();
     void WallsAnalysisFailed();
+    void ElectrodesProcessed(QPoint coordFirst, QPoint coordSecond, size_t distance);
 
 private:
 
@@ -65,6 +66,7 @@ private:
         QPair<cv::Point, cv::Point> electrodesApexes;
         const cv::Point2f undeterminedPoint= cv::Point2f(0,0);
         cv::Point2f lampCenter = undeterminedPoint;
+        size_t electrodesDistance = 0;
         double pixelMmRatio = 0;
     };
 
@@ -79,7 +81,7 @@ private:
     static void thresh_callback(int, void* );
     void CalculateRadii();
     void PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col);
-    void CalculateElectrodes(QImage& inputImage);
+    bool CalculateElectrodes(QImage& inputImage);
     void SimplifyLampContours();
     void FindPixelMmRatio(int lampWidthPx);
 };

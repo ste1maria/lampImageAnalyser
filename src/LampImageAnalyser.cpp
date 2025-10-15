@@ -159,7 +159,6 @@ void LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
         {
             this->CalculateElectrodes(inputImage);
         }
-
         this->SimplifyLampContours();
 
         this->CalculateRadii();
@@ -232,16 +231,18 @@ void LampImageAnalyser::PaintVertice(const cv::Point& imgPt)
 
 void LampImageAnalyser::PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col)
 {
+    cv::Mat circleImg = this->currentImageCv->clone();
     cv::circle(*this->currentImageCv, point, 3, col, cv::FILLED);
     cv::String coordinates = cv::String(std::format("({},{})", point.x, point.y));
 
-    cv::putText(*this->currentImageCv, 
-                coordinates, 
-                cv::Point(point.x + 5, point.y + 5),
-                cv::FONT_HERSHEY_PLAIN,
-                1,
-               col
-    );
+    // cv::putText(*this->currentImageCv, 
+    //             coordinates, 
+    //             cv::Point(point.x + 5, point.y + 5),
+    //             cv::FONT_HERSHEY_PLAIN,
+    //             1,
+    //            col
+    //);
+    *this->currentImageCv = std::move(circleImg);
     emit ShowVerticeOnImage(this->currentImageCv);
 }
 
@@ -613,12 +614,12 @@ void LampImageAnalyser::SimplifyLampContours()
 
     this->lamp.lampContours = simples;
 
-    // cv::Mat drawn = this->currentImageCv->clone();
-    // for (size_t i = 0; i < this->lamp.lampContours.size(); ++i) 
-    // {
-    //     cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
-    // }
-    // *this->currentImageCv = std::move(drawn);
+    cv::Mat drawn = this->currentImageCv->clone();
+    for (size_t i = 0; i < this->lamp.lampContours.size(); ++i) 
+    {
+        cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
+    }
+    *this->currentImageCv = std::move(drawn);
 }
 
 void LampImageAnalyser::CalculateRadii()
@@ -627,30 +628,30 @@ void LampImageAnalyser::CalculateRadii()
     
     QString radii;
 
+    cv::Mat drawn = this->currentImageCv->clone();
     for (size_t i=0; i<stats.size(); ++i) 
     {
         const auto& s = stats[i];
         qDebug() << "Curve " << i << ": fitR=" << s.r_fit << " @ (" << s.c_fit.x << "," << s.c_fit.y;
 
         std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
+        std::string curveNumber(std::format("({})", i + 1));
         radii += QString::fromStdString(radius) + "; ";
         
-        cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x - 50, this->lamp.lampContours[i][0].y + 20);
+        cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
 
-
-        // cv::Mat drawn = this->currentImageCv->clone();
-        // cv::putText(drawn, 
-        //         cv::String(radius), 
-        //         coordinates,
-        //         cv::FONT_HERSHEY_PLAIN,
-        //         0.8,
-        //         colours[i]
-        // );
-        // *this->currentImageCv = std::move(drawn);
+        cv::putText(drawn, 
+                cv::String(curveNumber), 
+                coordinates,
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.5,
+                colours[i]
+        );
 
         PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[i]);
     }
     
+    *this->currentImageCv = std::move(drawn);
     emit RadiiCalculated(radii);
 }
 
@@ -806,12 +807,19 @@ void LampImageAnalyser::ProcessElectrodes(QImage& inputImage)
 {
     try
     {
-        this->CalculateElectrodes(inputImage);
-        PaintVertice(this->lamp.electrodesApexes.first);
-        PaintVertice(this->lamp.electrodesApexes.second);
-        // cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
-        // //qDebug() << "distance" << distance << "angle" << angle;
-        // qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
+        bool success = this->CalculateElectrodes(inputImage);
+        if (success)
+        {
+            PaintVertice(this->lamp.electrodesApexes.first);
+            PaintVertice(this->lamp.electrodesApexes.second);
+            QPoint coordFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
+            QPoint coordSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
+            size_t distance = this->lamp.electrodesDistance;
+            emit ElectrodesProcessed(coordFirst, coordSecond, distance);
+            // cv::circle(coloredEdges, this->lamp.lampCenter, 3, cv::Scalar(0, 0, 255));
+            // //qDebug() << "distance" << distance << "angle" << angle;
+            // qDebug() << "center" << this->lamp.lampCenter.x << this->lamp.lampCenter.y;
+        }
     }
     catch(...)
     {
@@ -840,8 +848,10 @@ QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPo
     return QPair(distance, angle);
 }
 
-void LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
+bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 {
+    bool success = true;
+
     uint8_t * buffer = (uint8_t*)inputImage.bits();
     size_t width = inputImage.width();
     size_t height = inputImage.height();
@@ -925,16 +935,18 @@ void LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
     {
         emit ElectrodesAnalysisFailed();
-        return;
+        success = false;
     }
-
-    QPair<cv::Point, cv::Point> apexes;
-    apexes.first = apexesVect[0];
-    apexes.second = apexesVect[1];
-    
-    auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
-    this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
-
-    this->lamp.electrodesApexes = apexes;
-
+    else
+    {
+        QPair<cv::Point, cv::Point> apexes;
+        apexes.first = apexesVect[0];
+        apexes.second = apexesVect[1];
+        
+        auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
+        this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
+        this->lamp.electrodesDistance = static_cast<size_t>(distance);
+        this->lamp.electrodesApexes = apexes;
+    }
+    return success;
 }

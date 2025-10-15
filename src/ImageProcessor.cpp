@@ -4,6 +4,9 @@
 #include "LampImageAnalyser.h"
 #include <QDebug>
 #include <cmath>
+#include "mainwindow.h"
+
+class MainWindow;
 
 ImageProcessor::ImageProcessor(MainWindow *mainWindow)
     :
@@ -14,9 +17,10 @@ ImageProcessor::ImageProcessor(MainWindow *mainWindow)
 
     connect(this->analyser.get(), &LampImageAnalyser::ShowVerticeOnImage, this, &ImageProcessor::ShowVerticeOnImage);
     connect(this->analyser.get(), &LampImageAnalyser::ImageProcessed, this, &ImageProcessor::ShowEdgedImage);
-    connect(this->analyser.get(), &LampImageAnalyser::RadiiCalculated, this, &ImageProcessor::PrintRadiiSlot);
+    connect(this->analyser.get(), &LampImageAnalyser::RadiiCalculated, this->mainWindow,  &MainWindow::PrintRadii);
     connect(this->analyser.get(), &LampImageAnalyser::ElectrodesAnalysisFailed, this, &ImageProcessor::ElectrodesProcessingFail);
     connect(this->analyser.get(), &LampImageAnalyser::WallsAnalysisFailed, this, &ImageProcessor::WallsAnalysisFailSlot);
+    connect(this->analyser.get(), &LampImageAnalyser::ElectrodesProcessed, this->mainWindow, &MainWindow::PrintElectrodes);
 }
 
 ImageProcessor::~ImageProcessor()
@@ -155,14 +159,9 @@ void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
         processedImage->cols,
         processedImage->rows, 
         processedImage->step,
-        QImage::Format_Grayscale8
+        QImage::Format_BGR888
     );
     this->ShowImage(this->currentImage);
-}
-
-void ImageProcessor::PrintRadiiSlot(QString radii)
-{
-    emit PrintRadii(radii);
 }
 
 void ImageProcessor::RunFullAnalysis()
