@@ -152,7 +152,6 @@ void ImageProcessor::ShowVerticeOnImage(std::shared_ptr<cv::Mat> img)
     this->ShowImage(this->currentImage);
 }
 
-
 void ImageProcessor::ShowEdgedImage(std::shared_ptr<cv::Mat> processedImage)
 {
     this->currentImage = QImage(processedImage->data, 

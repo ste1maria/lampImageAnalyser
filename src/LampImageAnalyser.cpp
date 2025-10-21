@@ -689,9 +689,8 @@ void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QP
         PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[i]);
 
         radii->push_back(s.r_fit);
-        centers->push_back(QPoint(coordinates.x, coordinates.y));
+        centers->push_back(QPoint(s.c_fit.x, s.c_fit.y));
     }
-
     //emit RadiiCalculated(radii);
 }
 
@@ -891,6 +890,71 @@ QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPo
     return QPair(distance, angle);
 }
 
+void JoinSegmentsRecursive(std::vector<std::vector<cv::Point>>& input, std::vector<std::vector<cv::Point>>& output)
+{
+    std::vector<std::vector<cv::Point>> inputVector = input;
+    std::vector<std::vector<cv::Point>> jointVector;
+    std::vector<std::vector<cv::Point>> outputVector;
+    std::vector<int> alreadyJoined;
+    for (int i = 0; i < inputVector.size(); i++)
+    {
+        if (std::find(alreadyJoined.begin(), alreadyJoined.end(), i) != alreadyJoined.end())
+        {
+            continue;
+        }
+
+        bool toJoin = false;
+
+        cv::Point ptBegin, ptEnd;
+        float pointsTolerance = 5.0; // px
+        for (int j = 0; j < inputVector.size(); j++)
+        {
+            if (j == i)
+            {
+                continue;
+            }
+            float distanceBegin = sqrt( pow((inputVector[j].front().x - inputVector[i].back().x), 2) +
+                                        pow((inputVector[j].front().y - inputVector[i].back().y), 2)
+                                    );
+            float distanceEnd = sqrt( pow((inputVector[j].back().x - inputVector[i].front().x), 2) +
+                            pow((inputVector[j].back().y - inputVector[i].front().y), 2)
+                        );
+            std::vector<cv::Point> joined;
+            if (distanceBegin < pointsTolerance || distanceEnd < pointsTolerance)
+            {
+                toJoin = true;
+                if (distanceBegin < pointsTolerance)
+                {
+                    joined = inputVector[i];
+                    joined.insert(joined.end(), inputVector[j].begin(), inputVector[j].end());
+                }
+                else if (distanceEnd < pointsTolerance)
+                {
+                    joined = inputVector[j];
+                    joined.insert(joined.end(), inputVector[i].begin(), inputVector[i].end());
+                }
+                jointVector.push_back(joined);
+                alreadyJoined.push_back(i);
+                alreadyJoined.push_back(j);
+            }
+        }
+        if (!toJoin)
+        {
+            jointVector.push_back(inputVector[i]);
+        }
+    }
+
+    if (alreadyJoined.size() != 0)
+    {
+        JoinSegmentsRecursive(jointVector, outputVector);
+        output = outputVector;
+    }
+    else
+    {
+        output = jointVector;
+    }
+}
+
 bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 {
     bool success = true;
@@ -904,81 +968,84 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
     cv::Mat imgGray;
     cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
-
+    
     cv::Mat imgBlur;
     cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.7);
 
     cv::Mat cannyImg;
-    cv::Canny(imgBlur, cannyImg, 0, 75);
+    cv::Canny(imgBlur, cannyImg, 0, 100);
 
     // TRACING
-    cv::Mat toTrace = cannyImg.clone();
+    cv::Mat toTrace = img.clone();
     std::vector<std::vector<cv::Point>> electrodesTemp;
-    cv::findContours(toTrace, electrodesTemp, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-    cv::imshow("traced", toTrace);
 
-    std::vector<std::vector<cv::Point>> electrodesSorted;
-    // sort because sometimes contours contain repeating segments
-    for (auto electrode : electrodesTemp)
+    cv::Ptr<cv::ximgproc::FastLineDetector> fld =
+        cv::ximgproc::createFastLineDetector(/*length_threshold=*/10,
+                                            /*distance_threshold=*/1.4142,
+                                            /*canny_th1=*/5, /*canny_th2=*/100,
+                                            /*aperture=*/3, /*do_merge=*/true);
+
+    std::vector<cv::Vec4f> lines;
+    fld->detect(imgGray, lines);
+
+    std::vector<std::vector<cv::Point>> segments;
+    for (const auto& l : lines) 
     {
-        std::vector<cv::Point> electrodeToSort = electrode;
-        // sometimes the lamp.contours have double segments or go back and forth
-        std::sort(electrodeToSort.begin(), electrodeToSort.end(), [](const cv::Point& a, const cv::Point& b) {
-            return a.x < b.x;
-        });
-        electrodesSorted.push_back(electrodeToSort);
+        segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
+                            cv::Point(cvRound(l[2]), cvRound(l[3])) });
+        //cv::drawContours(toTrace, electrodesSorted, -1, cv::Scalar(0,255,255));
     }
-    
+
+    //cv::imshow("traced", toTrace);
+  
     // join broken contours
     this->lamp.electrodes.clear();
+    std::vector<std::vector<cv::Point>> electrodesJoint;
+    JoinSegmentsRecursive(segments, electrodesJoint);
 
-    std::vector<int> alreadyJoined;
-    for (int i = 0; i < electrodesSorted.size(); i++)
-    {
-        if (std::find(alreadyJoined.begin(), alreadyJoined.end(), i) != alreadyJoined.end())
-        {
-            continue;
-        }
+    this->lamp.electrodes = electrodesJoint;
+    // std::vector<int> alreadyJoined;
+    // for (int i = 0; i < electrodesSorted.size(); i++)
+    // {
+    //     if (std::find(alreadyJoined.begin(), alreadyJoined.end(), i) != alreadyJoined.end())
+    //     {
+    //         continue;
+    //     }
 
-        if (electrodesSorted[i].size() < 60)
-        {
-            continue;
-        }
+    //     bool toJoin = false;
 
-        bool toJoin = false;
-
-        cv::Point ptBegin, ptEnd;
-        float pointsTolerance = 5.0; // px
-        for (int j = 0; j < electrodesSorted.size(); j++)
-        {
-            if (j == i)
-            {
-                continue;
-            }
-            float distanceBegin = sqrt( pow((electrodesSorted[j].front().x - electrodesSorted[i].back().x), 2) +
-                                        pow((electrodesSorted[j].front().y - electrodesSorted[i].back().y), 2)
-                                    );
-            float distanceEnd = sqrt( pow((electrodesSorted[j].back().x - electrodesSorted[i].front().x), 2) +
-                            pow((electrodesSorted[j].back().y - electrodesSorted[i].front().y), 2)
-                        );
-            if (distanceBegin < pointsTolerance || distanceEnd < pointsTolerance)
-            {
-                toJoin = true;
-                electrodesSorted[i].insert(electrodesSorted[i].end(), electrodesSorted[j].begin(), electrodesSorted[j].end());
-                std::sort(electrodesSorted[i].begin(), electrodesSorted[i].end(), 
-                            [](const cv::Point& a, const cv::Point& b) {
-                                return a.x < b.x;
-                            });
-                this->lamp.electrodes.push_back(electrodesSorted[i]);
-                alreadyJoined.push_back(i);
-                alreadyJoined.push_back(j);
-            }
-        }
-        if (!toJoin)
-        {
-            this->lamp.electrodes.push_back(electrodesSorted[i]);
-        }
-    }
+    //     cv::Point ptBegin, ptEnd;
+    //     float pointsTolerance = 5.0; // px
+    //     for (int j = 0; j < electrodesSorted.size(); j++)
+    //     {
+    //         if (j == i)
+    //         {
+    //             continue;
+    //         }
+    //         float distanceBegin = sqrt( pow((electrodesSorted[j].front().x - electrodesSorted[i].back().x), 2) +
+    //                                     pow((electrodesSorted[j].front().y - electrodesSorted[i].back().y), 2)
+    //                                 );
+    //         float distanceEnd = sqrt( pow((electrodesSorted[j].back().x - electrodesSorted[i].front().x), 2) +
+    //                         pow((electrodesSorted[j].back().y - electrodesSorted[i].front().y), 2)
+    //                     );
+    //         if (distanceBegin < pointsTolerance || distanceEnd < pointsTolerance)
+    //         {
+    //             toJoin = true;
+    //             electrodesSorted[i].insert(electrodesSorted[i].end(), electrodesSorted[j].begin(), electrodesSorted[j].end());
+    //             std::sort(electrodesSorted[i].begin(), electrodesSorted[i].end(), 
+    //                         [](const cv::Point& a, const cv::Point& b) {
+    //                             return a.x < b.x;
+    //                         });
+    //         }
+    //         this->lamp.electrodes.push_back(electrodesSorted[i]);
+    //         alreadyJoined.push_back(i);
+    //         alreadyJoined.push_back(j);
+    //     }
+    //     if (!toJoin)
+    //     {
+    //         this->lamp.electrodes.push_back(electrodesSorted[i]);
+    //     }
+    // }
 
     // find vertices
     std::vector<cv::Point> apexesVect;
@@ -1006,7 +1073,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
             double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
             if (interior_deg < smallestAngle && interior_deg > 5.0)
-            {
+            {  
                 smallestAngle = interior_deg;
                 apex = approx[i];
 
@@ -1018,19 +1085,19 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
             continue;
         }
 
-        // sanity check
+                // sanity check
 
         ApexSanityResult isApexOk = ApexSanityCheck(approx, apex, imgGray.rows);
 
         if (isApexOk == ApexSanityResult::APEX_OK)
         {
-            apexesVect.push_back(apex);
+        apexesVect.push_back(apex);
         }
         else
         {
             apexError = isApexOk;
             break;
-        }
+            }
     }
 
     if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
