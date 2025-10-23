@@ -69,8 +69,16 @@ private:
         {
             lampContours.clear();
             electrodes.clear();
+            wallsApexes.clear();
+            wallsThickness = QPair(0,0);
+            wallsRadii.clear();
+            wallsCenters.clear();
             electrodesApexes = QPair<cv::Point, cv::Point>(undeterminedPoint, undeterminedPoint);
+
             lampCenter = undeterminedPoint;
+            electrodesDistancePx = 0;
+            electrodesAngle = 0.0f;
+            pixelMmRatio = 0;
         }
 
     public:
@@ -101,7 +109,7 @@ private:
     void CalculateRadii(std::vector<float>* radii, std::vector<QPoint>* centers);
     void PaintCircleCenter(cv::Point point, int curveNumber, cv::Scalar col);
     bool CalculateElectrodes(QImage& inputImage);
-    void SimplifyLampContours();
+    bool SimplifyLampContours();
     void FindPixelMmRatio(int lampWidthPx);
     QPair<double, double> CalculateWallThickness();
 };

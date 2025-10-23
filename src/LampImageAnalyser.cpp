@@ -13,7 +13,25 @@
 #include <unordered_set>
 #include <algorithm>
 
-int thresh = 5;
+const int centerApproxTolerance = 20; // px
+
+std::vector<cv::Scalar> coloursRandom = {
+    { 231,  72,  28},
+    {  57, 203, 155},
+    { 142,  89, 221},
+    { 255, 183,  64},
+    {  90,  96, 242},
+    { 214,  40, 123},
+    {  67, 214,  52},
+    { 156, 240, 210},
+    { 255, 112, 176},
+    {  48, 169, 255},
+    { 255, 255, 102},
+    { 116,  61,  34},
+    { 185, 122, 222},
+    {  33, 222, 188},
+    { 255,  77,  77}
+};
 
 cv::Scalar colours[] = {
     cv::Scalar(0, 0, 0), 
@@ -103,57 +121,68 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
     try
     {
         cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
+
         cv::Mat imgGray;
         cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
+        
         cv::Mat imgBlur;
-
         cv::blur(imgGray, imgBlur, cv::Size(10,10));
-        // SOBEL
+        //cv:imshow("blur", imgBlur);
+
+        // basically increases contrast and brightness
+        cv::Mat normalized;
+        cv::normalize(imgBlur, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+
+        // SOBEL edge detection
         cv::Mat sobelx, sobely, gradient;
-        // Apply Sobel operator
-        cv::Sobel(imgBlur, sobelx, CV_64F, 1, 0, 3);
-        cv::Sobel(imgBlur, sobely, CV_64F, 0, 1, 3);
-    
-        // Compute gradient magnitude
+        cv::Sobel(normalized, sobelx, CV_64F, 1, 0, 3);
+        cv::Sobel(normalized, sobely, CV_64F, 0, 1, 3);
         cv::magnitude(sobelx, sobely, gradient);
-
-        // Convert to 8-bit image
         cv::Mat gradient_abs;
-        cv::convertScaleAbs(gradient, gradient_abs);        
+        cv::convertScaleAbs(gradient, gradient_abs);  
 
-        cv::Mat edges;
-        cv::threshold(gradient_abs, edges, 10, 255, cv::THRESH_BINARY);
-        cv::morphologyEx(edges, edges, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3)));
-        //cv::imshow("SOBEL", edges);
+        // extract a range of brightness
+        cv::Mat thresh;
+        cv::threshold(gradient_abs, thresh, 50, 255, cv::THRESH_TOZERO_INV);
+        cv::threshold(thresh, thresh, 20, 255, cv::THRESH_TOZERO);
+        // normalize again
+        cv::normalize(thresh, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    
+        // get rid of "halo" around true edges 
+        cv::Mat edgesMask;
+        cv::inRange(normalized, 50, 200, edgesMask);
 
-        cv::Mat labels, stats, centroids;
-        int n = cv::connectedComponentsWithStats(edges, labels, stats, centroids, 8, CV_32S);
-        int min_area = 50; // tune
-        for (int i = 1; i < n; ++i) {
-            if (stats.at<int>(i, cv::CC_STAT_AREA) < min_area)
-            {
-                edges.setTo(0, labels == i);
-            }
-        }
-        //cv::imshow("SOBEL shaved", edges);
+        // connect gaps
+        cv::dilate(edgesMask, edgesMask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5,3)));
+        cv::blur(edgesMask, edgesMask, cv::Size(5,5));
+        //cv::imshow("edges mask blurred", edgesMask);
 
         // THINNING
-        cv::Mat thinned_edges;
-        cv::ximgproc::thinning(edges, thinned_edges, cv::ximgproc::THINNING_ZHANGSUEN);
-        //cv::imshow("thinned", thinned_edges);
-
-        cv::Mat contouredImg = pruneSpurs(thinned_edges, 10);
+        cv::Mat thinEdges;
+        cv::ximgproc::thinning(edgesMask, thinEdges, cv::ximgproc::THINNING_ZHANGSUEN);
+        //cv::imshow("contoured", thinEdges);
 
         // TRACING
-        cv::Mat toTrace = contouredImg.clone();
-        this->contours.clear();
-        cv::findContours(toTrace, this->contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-        std::sort(this->contours.begin(), this->contours.end(),
-              [](auto &a, auto &b){ return a.size() > b.size(); });
+        std::vector<std::vector<cv::Point>> traced;
+        cv::findContours(thinEdges, traced, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+        std::sort(traced.begin(), traced.end(),
+              [](auto &a, auto &b)
+              { 
+                return a.size() > b.size(); 
+              }
+            );
         
-        if (this->contours.size() > 10 || this->contours.size() < 4)
+        cv::Mat tracedImg = img.clone();
+        for (size_t i = 0; i < traced.size(); ++i)
         {
-            emit WallsAnalysisFailed();
+            cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+        }
+        //cv::imshow("traced lamp", tracedImg);
+        this->contours.clear();
+        this->contours = traced;
+
+        if (this->contours.size() < 4)
+        {
             success = false;
         }
         else 
@@ -168,35 +197,39 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
             }
             if (success)
             {
-                this->SimplifyLampContours();
+                success = this->SimplifyLampContours();
 
-                std::vector<float> radii;
-                std::vector<QPoint> centers;
-                this->CalculateRadii(&radii, &centers);
-
-                std::vector<float> radiiMm;
-                for (float radius : radii)
+                if (success)
                 {
-                    float radiusMm = 0;
-                    if (this->lamp.pixelMmRatio != 0)
+                    std::vector<float> radii;
+                    std::vector<QPoint> centers;
+                    this->CalculateRadii(&radii, &centers);
+
+                    std::vector<float> radiiMm;
+                    for (float radius : radii)
                     {
-                        radiusMm = radius / this->lamp.pixelMmRatio;
+                        float radiusMm = 0;
+                        if (this->lamp.pixelMmRatio != 0)
+                        {
+                            radiusMm = radius / this->lamp.pixelMmRatio;
+                        }
+                        radiiMm.push_back(radiusMm);
                     }
-                    radiiMm.push_back(radiusMm);
+
+                    QPair<double, double> lampWalls = this->CalculateWallThickness();
+                    this->lamp.wallsCenters = centers;
+                    this->lamp.wallsRadii = radiiMm;
+                    this->lamp.wallsThickness = lampWalls;
+                    
+                    //emit ImageProcessed(this->currentImageCv);
+                    // emit LampWallsProcessed(centers, radiiMm, lampWalls);
                 }
-
-                QPair<double, double> lampWalls = this->CalculateWallThickness();
-                this->lamp.wallsCenters = centers;
-                this->lamp.wallsRadii = radiiMm;
-                this->lamp.wallsThickness = lampWalls;
-                
-                //emit ImageProcessed(this->currentImageCv);
-                // emit LampWallsProcessed(centers, radiiMm, lampWalls);
             }
-            
         }
-
-        
+        if (!success)
+        {
+            emit WallsAnalysisFailed();
+        }
     }
     catch(const cv::Exception e)
     {
@@ -348,170 +381,6 @@ static void drawPolylineF(cv::Mat& img,
     }
 }
 
-struct RadiusStats {
-    float r_min;       // minimum local radius (tightest bend)
-    float r_p05;       // 5th percentile radius (robust tightest bend)
-    float r_median;    // median local radius
-    float r_mean;      // mean of local radii
-    float r_hmean;     // harmonic mean of local radii (averaging curvature)
-    float r_fit;       // global best-fit circle radius (Kåsa)
-    cv::Point c_fit; // best-fit circle center
-    int n_samples;     // points used for local stats
-};
-
-
-static bool circumcircleR(const cv::Point& A, const cv::Point& B, const cv::Point& C,
-                          cv::Point& center, float& radius)
-{
-    float a2 = A.dot(A), b2 = B.dot(B), c2 = C.dot(C);
-    float d = 2.f*(A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
-
-    if (std::abs(d) < 1e-8f)
-    {
-        return false; // nearly colinear
-    }
-    center.x = (a2 * (B.y - C.y) + b2 * (C.y - A.y) + c2 * (A.y - B.y)) / d;
-    center.y = (a2 * (C.x - B.x) + b2 * (A.x - C.x) + c2 * (B.x - A.x)) / d;
-    radius   = cv::norm(center - B);
-    return true;
-}
-
-static bool fitCircleKasa(const std::vector<cv::Point>& P, cv::Point& C, float& R) 
-{
-    if (P.size() < 3) 
-    {
-        return false;
-    }
-    cv::Mat A(P.size(), 3, CV_64F), b(P.size(), 1, CV_64F);
-
-    for (int i = 0; i < (int)P.size(); ++i)
-    {
-        double x = P[i].x, y = P[i].y;
-        A.at<double>(i, 0) = x; 
-        A.at<double>(i, 1) = y; 
-        A.at<double>(i, 2) = 1.0;
-        b.at<double>(i, 0) =- (x*x + y*y);
-    }
-    cv::Mat sol;
-    if (!cv::solve(A, b, sol, cv::DECOMP_SVD)) 
-    {
-        return false;
-    }
-    double Acoef = sol.at<double>(0), Bcoef = sol.at<double>(1), Ccoef = sol.at<double>(2);
-    double cx = -Acoef/2.0, cy = -Bcoef/2.0;
-    double r2 = cx*cx + cy*cy - Ccoef;
-    if (r2 <= 0) 
-    {
-        return false;
-    }
-    C = cv::Point((float)cx, (float)cy);
-    R = (float)std::sqrt(r2);
-    return std::isfinite(R);
-}
-
-template<typename T>
-static T percentile(std::vector<T> v, double p01_to_99) 
-{
-    if (v.empty()) 
-    {
-        return std::numeric_limits<T>::quiet_NaN();
-    }
-    p01_to_99 = std::clamp(p01_to_99, 0.0, 100.0);
-    size_t k = (size_t)std::floor((p01_to_99/100.0) * (v.size()-1));
-    std::nth_element(v.begin(), v.begin()+k, v.end());
-    return v[k];
-}
-
-// local radii via 3-point circumcircle on a uniformly-sampled curve
-static std::vector<float> localRadii(const std::vector<cv::Point>& P, float ds=1.0f, int stride=2, bool closed=false) 
-{
-    auto U = resampleByArcLen(P, ds, closed);
-    int n = (int)U.size();
-
-    if (n < 3)
-    {
-        return {};
-    }
-    
-    auto idx = [&](int i)
-    { 
-        return closed ? ( (i % n + n) % n ) : std::clamp(i, 0, n-1); 
-    };
-
-    std::vector<float> R; 
-    R.reserve(n);
-
-    for (int i = 0; i < n; ++i) 
-    {
-        int i0 = idx(i - stride), i2 = idx(i + stride);
-        cv::Point c; 
-        float r;
-        if (circumcircleR(U[i0], U[i], U[i2], c, r) && std::isfinite(r)) 
-        {
-            R.push_back(r);
-        }
-    }
-    return R;
-}
-
-// ---------- main: stats per polyline ----------
-static RadiusStats curvatureRadiusForPolyline(const std::vector<cv::Point>& poly,
-                                              float ds=1.0f, int stride=2, bool closedFlag=false)
-{
-    bool closed = false;
-    auto Rv = localRadii(poly, ds, stride, closed);
-    // keep finite and cap absurdly huge radii for stats robustness
-    std::vector<float> Rs;
-    Rs.reserve(Rv.size());
-    for (float r : Rv) 
-    {
-        if (std::isfinite(r)) 
-        {
-            Rs.push_back(std::min(r, 1e6f));
-        }
-    }
-
-    RadiusStats S{};
-    S.n_samples = (int)Rs.size();
-    if (!Rs.empty()) 
-    {
-        S.r_min    = *std::min_element(Rs.begin(), Rs.end());
-        S.r_p05    = percentile(Rs, 5.0);
-        S.r_median = percentile(Rs, 50.0);
-        S.r_mean   = std::accumulate(Rs.begin(), Rs.end(), 0.0f)/Rs.size();
-
-        // harmonic mean on curvature (average kappa = mean(1/r)), then 1/mean_kappa
-        double sumInv = 0.0;
-        int cntInv = 0;
-        for (float r : Rs) 
-        { 
-            if (r > 1e-9f){ sumInv += 1.0/r; ++cntInv; } 
-        }
-        S.r_hmean = (cntInv>0) ? float(cntInv / sumInv) : std::numeric_limits<float>::infinity();
-    } 
-    else 
-    {
-        S.r_min=S.r_p05=S.r_median=S.r_mean=S.r_hmean=std::numeric_limits<float>::quiet_NaN();
-    }
-
-    // global circle fit (good if the curve is an arc)
-    fitCircleKasa(poly, S.c_fit, S.r_fit);
-    return S;
-}
-
-// batch version: one stats record per polyline
-static std::vector<RadiusStats> curvatureRadiusForPolylines(const std::vector<std::vector<cv::Point>>& polys,
-                                                            float ds=1.0f, int stride=2, bool closed=false)
-{
-    std::vector<RadiusStats> out; 
-    out.reserve(polys.size());
-    for (auto& p : polys)
-    {
-        out.push_back(curvatureRadiusForPolyline(p, ds, stride, closed));
-    }
-        
-    return out;
-}
 
 typedef enum 
 {
@@ -527,7 +396,7 @@ int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int la
     int max_x = 0;
     int min_x = 10000;
     int apexIndex = 0;
-    int minDiff = 10;
+    int minDiff = centerApproxTolerance;
 
     if (orientation == Orientation::AMBIG)
     {
@@ -565,116 +434,315 @@ void LampImageAnalyser::FindPixelMmRatio(int lampWidthPx)
     qDebug() << "width" << lampWidthPx;
 }
 
-void LampImageAnalyser::SimplifyLampContours()
+bool LampImageAnalyser::SimplifyLampContours()
 {
-    std::vector<std::vector<cv::Point>> simples;
-    std::vector<std::vector<cv::Point>> trueContours;
-    int leftmostApexX(0), rightmostApexX(0);
-
-    // find curve apexes
-    for (size_t i = 0; i < this->contours.size(); i++)
+    bool success = true;
+    if (this->lamp.lampCenter == this->lamp.undeterminedPoint)
     {
-        // throwing away contours that do not resemble lamp walls
-        if (this->contours[i].size() < 200)
-        {  
-            continue;
-        }
-        std::vector<cv::Point> contour = this->contours[i];
-
-        // sorting because some segments are repeating
-        std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
-            return a.y < b.y;
-        });
-        
-        OpeningResult r = detectOpeningLR(contour);
-        Orientation orient =  (r.opening == OpeningLR::Left ? Orientation::LEFT :
-                                r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
-
-        int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter.y);
-        
-        this->lamp.wallsApexes.push_back(contour[apexIdx]);
-
-        if (leftmostApexX == 0 && rightmostApexX == 0)
-        {
-            leftmostApexX = contour[apexIdx].x;
-            rightmostApexX = contour[apexIdx].x;
-        }
-        else if (contour[apexIdx].x < leftmostApexX)
-        {
-            leftmostApexX = contour[apexIdx].x;
-        }
-        else if (contour[apexIdx].x > rightmostApexX)
-        {
-            rightmostApexX = contour[apexIdx].x;
-        }
-
-        trueContours.push_back(contour);
+        success = false;
     }
 
-    // find pixel to mm ratio from lamp width
-    this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
-    int pixels2mm = 2 * this->lamp.pixelMmRatio;
-
-    for (size_t i = 0; i < trueContours.size(); i++)
+    cv::Mat trueContoured = this->currentImageCv->clone();
+    if (success)
     {
-        unsigned bestIdx_up(0), bestIdx_down(0);
-        unsigned bestAbs_up(10), bestAbs_down(10);// maximum tolerance to Y difference
+        std::vector<std::vector<cv::Point>> simples;
+        std::vector<std::vector<cv::Point>> trueContours;
+        int leftmostApexX(0), rightmostApexX(0);
 
-        cv::Point currentApex = this->lamp.wallsApexes[i];
-
-        int y_up = currentApex.y - pixels2mm;
-        int y_down = currentApex.y + pixels2mm;
-        for (size_t j = 0; j < trueContours[i].size(); j++)
+        // filter out contours that do not resemble lamp walls
+        for (size_t i = 0; i < this->contours.size(); i++)
         {
-            if (j < trueContours[i].size() / 2)
+            if (this->contours[i].size() < 200)
+            {  
+                continue;
+            }
+            
+            std::vector<cv::Point> contour = this->contours[i];
+
+            std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
+                return a.y < b.y;
+            });
+            
+            OpeningResult r = detectOpeningLR(contour);
+            Orientation orient = (r.opening == OpeningLR::Left ? Orientation::LEFT :
+                                    r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
+
+            if (orient == Orientation::AMBIG)
             {
-                int d_up = std::abs(trueContours[i][j].y - y_up);
-                if (d_up < bestAbs_up)
+                continue;
+            }
+
+            int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter.y);
+            
+            this->lamp.wallsApexes.push_back(contour[apexIdx]);
+
+            if (leftmostApexX == 0 && rightmostApexX == 0)
+            {
+                leftmostApexX = contour[apexIdx].x;
+                rightmostApexX = contour[apexIdx].x;
+            }
+            else if (contour[apexIdx].x < leftmostApexX)
+            {
+                leftmostApexX = contour[apexIdx].x;
+            }
+            else if (contour[apexIdx].x > rightmostApexX)
+            {
+                rightmostApexX = contour[apexIdx].x;
+            }
+
+            trueContours.push_back(contour);
+            cv::polylines(trueContoured, contour, false, colours[i]);
+        }
+        //cv::imshow("true contours", trueContoured);
+
+        // find pixel to mm ratio from lamp width
+        this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
+        int pixels2mm = 2 * this->lamp.pixelMmRatio;
+
+        int lampCenterY = this->lamp.lampCenter.y;
+
+        for (size_t i = 0; i < trueContours.size(); i++)
+        {
+            // find point on curve that lies approximately on the center horizontal line of the lamp
+            int indexCenter = 0;
+            unsigned bestAbsCenter(centerApproxTolerance), bestIdxCenter(0);
+            for (size_t j = 0; j < trueContours[i].size(); ++j)
+            {
+                int diffCenter = std::abs(trueContours[i][j].y - lampCenterY);
+                if (diffCenter < bestAbsCenter)
                 {
-                    bestAbs_up = d_up;
-                    bestIdx_up = j;
+                    bestAbsCenter = diffCenter;
+                    indexCenter = j;
                 }
             }
-            else
+            if (indexCenter == 0)
             {
-                int d_down = std::abs(trueContours[i][j].y - y_down);
-                if (d_down < bestAbs_down)
+                continue;
+            }
+            
+            // go up and down 2 mm from the center
+            int y_up = trueContours[i][indexCenter].y - pixels2mm;
+            int y_down = trueContours[i][indexCenter].y + pixels2mm;
+
+            unsigned bestIdx_up(0), bestIdx_down(0);
+            unsigned bestAbs_up(10), bestAbs_down(10);// maximum tolerance to Y difference
+            
+            for (size_t j = 0; j < trueContours[i].size(); j++)
+            {
+                if (j <= indexCenter)
                 {
-                    bestAbs_down = d_down;
-                    bestIdx_down = j;
+                    int d_up = std::abs(trueContours[i][j].y - y_up);
+                    if (d_up < bestAbs_up)
+                    {
+                        bestAbs_up = d_up;
+                        bestIdx_up = j;
+                    }
+                }
+                else
+                {
+                    int d_down = std::abs(trueContours[i][j].y - y_down);
+                    if (d_down < bestAbs_down)
+                    {
+                        bestAbs_down = d_down;
+                        bestIdx_down = j;
+                    }
                 }
             }
+            std::vector<cv::Point> simple(trueContours[i].begin() + bestIdx_up, trueContours[i].begin() + bestIdx_down);
+            simples.push_back(simple);
         }
-        std::vector<cv::Point> simple(trueContours[i].begin() + bestIdx_up, trueContours[i].begin() + bestIdx_down);
-        simples.push_back(simple);
+
+        if (simples.size() < 4)
+        {
+            success = false;
+        }
+        else
+        {
+            this->lamp.lampContours = simples;
+
+            cv::Mat drawn = this->currentImageCv->clone();
+            for (size_t i = 0; i < this->lamp.lampContours.size(); ++i) 
+            {
+                cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
+            }
+            //cv::imshow("lamp contours", drawn);
+            *this->currentImageCv = std::move(drawn);
+        }
+        
     }
 
-    this->lamp.lampContours = simples;
+    return success;
+}
 
-    cv::Mat drawn = this->currentImageCv->clone();
-    for (size_t i = 0; i < this->lamp.lampContours.size(); ++i) 
+inline bool fitCircleArcLSQ
+(
+    const std::vector<cv::Point>& pts,
+    cv::Point2d& center,
+    double& radius,
+    bool refine = false,
+    int refine_iters = 15,
+    double huber_delta = 1.5
+)
+{
+    const int n = static_cast<int>(pts.size());
+    if (n < 3)
     {
-        cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
+        return false;
     }
-    *this->currentImageCv = std::move(drawn);
+
+    // --- 1) Linear Kåsa fit
+    cv::Mat1d M(n, 3), b(n, 1);
+    for (int i = 0; i < n; ++i) 
+    {
+        double x = static_cast<double>(pts[i].x);
+        double y = static_cast<double>(pts[i].y);
+        M(i, 0) = x;
+        M(i, 1) = y;
+        M(i, 2) = 1.0;
+        b(i, 0) = -(x * x + y * y);
+    }
+
+    cv::Mat1d abc;
+    if (!cv::solve(M, b, abc, cv::DECOMP_NORMAL | cv::DECOMP_LU))
+    {
+        return false;
+    }
+
+    double A = abc(0, 0);
+    double B = abc(1, 0);
+    double C = abc(2, 0);
+
+    double cx = -A * 0.5;
+    double cy = -B * 0.5;
+    double r2 = cx * cx + cy * cy - C;
+    if (r2 <= 0.0 || !std::isfinite(r2)) 
+    {
+        return false;
+    }
+
+    double r = std::sqrt(r2);
+
+    if (!refine) 
+    {
+        center = {cx, cy};
+        radius = r;
+        return true;
+    }
+
+    // --- 2) Geometric refinement (Huber-weighted Gauss–Newton)
+    for (int iter = 0; iter < refine_iters; ++iter) 
+    {
+        double H00 = 0, H01 = 0, H02 = 0;
+        double H11 = 0, H12 = 0, H22 = 0;
+        double g0 = 0, g1 = 0, g2 = 0;
+
+        int used = 0;
+        for (int i = 0; i < n; ++i) 
+        {
+            double xi = static_cast<double>(pts[i].x);
+            double yi = static_cast<double>(pts[i].y);
+            double dx = xi - cx;
+            double dy = yi - cy;
+            double di = std::sqrt(dx * dx + dy * dy);
+            if (!(di > 1e-12) || !std::isfinite(di))
+            {
+                continue;  
+            } 
+
+            double ri = di - r;
+            double w = 1.0;
+            if (std::abs(ri) > huber_delta)
+            {
+                w = huber_delta / std::abs(ri);
+            }
+
+            double j0 = -dx / di;
+            double j1 = -dy / di;
+            double j2 = -1.0;
+
+            H00 += w * j0 * j0;
+            H01 += w * j0 * j1;
+            H02 += w * j0 * j2;
+            H11 += w * j1 * j1;
+            H12 += w * j1 * j2;
+            H22 += w * j2 * j2;
+
+            g0 += w * j0 * ri;
+            g1 += w * j1 * ri;
+            g2 += w * j2 * ri;
+
+            ++used;
+        }
+        if (used < 3) 
+        {
+            break;
+        }
+
+        cv::Mat1d H(3, 3);
+        H(0,0)=H00; H(0,1)=H01; H(0,2)=H02;
+        H(1,0)=H01; H(1,1)=H11; H(1,2)=H12;
+        H(2,0)=H02; H(2,1)=H12; H(2,2)=H22;
+
+        cv::Mat1d g(3,1); g(0)=g0; g(1)=g1; g(2)=g2;
+
+        // small damping
+        H(0,0)+=1e-9; H(1,1)+=1e-9; H(2,2)+=1e-9;
+
+        cv::Mat1d delta;
+        if (!cv::solve(H, g, delta, cv::DECOMP_CHOLESKY)) 
+        {
+            if (!cv::solve(H, g, delta, cv::DECOMP_SVD)) 
+            {
+                break;
+            }
+        }
+
+        double d_cx = delta(0);
+        double d_cy = delta(1);
+        double d_r  = delta(2);
+
+        cx += d_cx;
+        cy += d_cy;
+        r  += d_r;
+
+        if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(r) || r <= 0.0)
+        {
+            return false;
+        }
+            
+        if (std::sqrt(d_cx*d_cx + d_cy*d_cy) < 1e-9 && std::abs(d_r) < 1e-9)
+        {
+            break;
+        }
+    }
+
+    center = {cx, cy};
+    radius = r;
+    return true;
 }
 
 void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QPoint>* centers)
 {
-    auto stats = curvatureRadiusForPolylines(this->lamp.lampContours, /*ds=*/1.0f, /*stride=*/3, /*closed=*/false);
-    
     QString radiiString;
 
-    cv::Mat drawn = this->currentImageCv->clone();
-
-    for (size_t i=0; i<stats.size(); ++i) 
+    for (size_t i=0; i< this->lamp.lampContours.size(); ++i) 
     {
-        const auto& s = stats[i];
-        qDebug() << "Curve " << i << ": fitR=" << s.r_fit << " @ (" << s.c_fit.x << "," << s.c_fit.y;
+        //CircleStats stats = findCurvatureRadius(this->lamp.lampContours[i]);
+        cv::Point2d center;
+        double radius;
+        bool success = fitCircleArcLSQ(this->lamp.lampContours[i], center, radius);
+        if (!success)
+        {
+            continue;
+        }
+        
+        cv::Mat drawn = this->currentImageCv->clone();
 
-        std::string radius(std::format("({}) R={:.1f} px", i + 1, s.r_fit));
+        qDebug() << "Curve " << i << ": fitR=" << radius << "@ (" << center.x << "," << center.y;
+
+        std::string radiusStr(std::format("({}) R={:.1f} px", i + 1, radius));
         std::string curveNumber(std::format("({})", i + 1));
-        radiiString += QString::fromStdString(radius) + "; ";
+        radiiString += QString::fromStdString(radiusStr) + "; ";
         
         cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
 
@@ -686,10 +754,10 @@ void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QP
                 colours[i]
         );
 
-        PaintCircleCenter(cv::Point(s.c_fit.x, s.c_fit.y), i + 1, colours[i]);
+        PaintCircleCenter(cv::Point(center.x, center.y), i + 1, colours[i]);
 
-        radii->push_back(s.r_fit);
-        centers->push_back(QPoint(s.c_fit.x, s.c_fit.y));
+        radii->push_back(radius);
+        centers->push_back(QPoint(center.x, center.y));
     }
     //emit RadiiCalculated(radii);
 }
@@ -896,6 +964,16 @@ void JoinSegmentsRecursive(std::vector<std::vector<cv::Point>>& input, std::vect
     std::vector<std::vector<cv::Point>> jointVector;
     std::vector<std::vector<cv::Point>> outputVector;
     std::vector<int> alreadyJoined;
+    
+    // first sort for easier comparison
+    for (auto segment : inputVector)
+    {
+        std::sort(segment.begin(), segment.end(), [](const cv::Point& a, const cv::Point& b) 
+                                            {
+                                                return a.y < b.y;
+                                            });
+    }
+
     for (int i = 0; i < inputVector.size(); i++)
     {
         if (std::find(alreadyJoined.begin(), alreadyJoined.end(), i) != alreadyJoined.end())
@@ -905,8 +983,7 @@ void JoinSegmentsRecursive(std::vector<std::vector<cv::Point>>& input, std::vect
 
         bool toJoin = false;
 
-        cv::Point ptBegin, ptEnd;
-        float pointsTolerance = 5.0; // px
+        float pointsTolerance = 10.0; // px
         for (int j = 0; j < inputVector.size(); j++)
         {
             if (j == i)
@@ -926,11 +1003,13 @@ void JoinSegmentsRecursive(std::vector<std::vector<cv::Point>>& input, std::vect
                 if (distanceBegin < pointsTolerance)
                 {
                     joined = inputVector[i];
+                    joined.pop_back();
                     joined.insert(joined.end(), inputVector[j].begin(), inputVector[j].end());
                 }
                 else if (distanceEnd < pointsTolerance)
                 {
                     joined = inputVector[j];
+                    joined.pop_back();
                     joined.insert(joined.end(), inputVector[i].begin(), inputVector[i].end());
                 }
                 jointVector.push_back(joined);
@@ -955,6 +1034,54 @@ void JoinSegmentsRecursive(std::vector<std::vector<cv::Point>>& input, std::vect
     }
 }
 
+void RemoveDuplicatePoints(std::vector<cv::Point>& input, std::vector<cv::Point>& output)
+{
+    std::vector<cv::Point> inputVector = input;
+    std::vector<cv::Point> outputVector;
+    std::vector<int> toBeRemoved;
+    for (int i = 0; i < inputVector.size(); i++)
+    {
+        if (std::find(toBeRemoved.begin(), toBeRemoved.end(), i) != toBeRemoved.end())
+        {
+            continue;
+        }
+
+        cv::Point first = inputVector[i];
+        float pointsTolerance = 20.0; // px
+
+        for (int j = 0; j < inputVector.size(); j++)
+        {
+            if (i == j)
+            {
+                continue;
+            }
+
+            cv::Point second = inputVector[j];
+
+            float distance= sqrt( pow((first.x - second.x), 2) +
+                                        pow((first.y - second.y), 2)
+                                    );
+            if (distance < pointsTolerance)
+            {
+                toBeRemoved.push_back(j);
+            }
+        }
+    }
+
+    for (int i = 0; i < inputVector.size(); i++)
+    {
+        if (std::find(toBeRemoved.begin(), toBeRemoved.end(), i) != toBeRemoved.end())
+        {
+            continue;
+        }
+        else
+        {
+            outputVector.push_back(inputVector[i]);
+        }
+    }
+    output = outputVector;
+}
+
 bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 {
     bool success = true;
@@ -972,9 +1099,6 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     cv::Mat imgBlur;
     cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.7);
 
-    cv::Mat cannyImg;
-    cv::Canny(imgBlur, cannyImg, 0, 100);
-
     // TRACING
     cv::Mat toTrace = img.clone();
     std::vector<std::vector<cv::Point>> electrodesTemp;
@@ -982,7 +1106,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     cv::Ptr<cv::ximgproc::FastLineDetector> fld =
         cv::ximgproc::createFastLineDetector(/*length_threshold=*/10,
                                             /*distance_threshold=*/1.4142,
-                                            /*canny_th1=*/5, /*canny_th2=*/100,
+                                            /*canny_th1=*/20, /*canny_th2=*/75,
                                             /*aperture=*/3, /*do_merge=*/true);
 
     std::vector<cv::Vec4f> lines;
@@ -993,9 +1117,9 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     {
         segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
                             cv::Point(cvRound(l[2]), cvRound(l[3])) });
-        //cv::drawContours(toTrace, electrodesSorted, -1, cv::Scalar(0,255,255));
     }
 
+    // cv::drawContours(toTrace, segments, -1, cv::Scalar(0,255,255));
     //cv::imshow("traced", toTrace);
   
     // join broken contours
@@ -1003,55 +1127,19 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     std::vector<std::vector<cv::Point>> electrodesJoint;
     JoinSegmentsRecursive(segments, electrodesJoint);
 
-    this->lamp.electrodes = electrodesJoint;
-    // std::vector<int> alreadyJoined;
-    // for (int i = 0; i < electrodesSorted.size(); i++)
-    // {
-    //     if (std::find(alreadyJoined.begin(), alreadyJoined.end(), i) != alreadyJoined.end())
-    //     {
-    //         continue;
-    //     }
-
-    //     bool toJoin = false;
-
-    //     cv::Point ptBegin, ptEnd;
-    //     float pointsTolerance = 5.0; // px
-    //     for (int j = 0; j < electrodesSorted.size(); j++)
-    //     {
-    //         if (j == i)
-    //         {
-    //             continue;
-    //         }
-    //         float distanceBegin = sqrt( pow((electrodesSorted[j].front().x - electrodesSorted[i].back().x), 2) +
-    //                                     pow((electrodesSorted[j].front().y - electrodesSorted[i].back().y), 2)
-    //                                 );
-    //         float distanceEnd = sqrt( pow((electrodesSorted[j].back().x - electrodesSorted[i].front().x), 2) +
-    //                         pow((electrodesSorted[j].back().y - electrodesSorted[i].front().y), 2)
-    //                     );
-    //         if (distanceBegin < pointsTolerance || distanceEnd < pointsTolerance)
-    //         {
-    //             toJoin = true;
-    //             electrodesSorted[i].insert(electrodesSorted[i].end(), electrodesSorted[j].begin(), electrodesSorted[j].end());
-    //             std::sort(electrodesSorted[i].begin(), electrodesSorted[i].end(), 
-    //                         [](const cv::Point& a, const cv::Point& b) {
-    //                             return a.x < b.x;
-    //                         });
-    //         }
-    //         this->lamp.electrodes.push_back(electrodesSorted[i]);
-    //         alreadyJoined.push_back(i);
-    //         alreadyJoined.push_back(j);
-    //     }
-    //     if (!toJoin)
-    //     {
-    //         this->lamp.electrodes.push_back(electrodesSorted[i]);
-    //     }
-    // }
-
     // find vertices
     std::vector<cv::Point> apexesVect;
     ApexSanityResult apexError = ApexSanityResult::APEX_OK;
-    for (auto electrode : this->lamp.electrodes)
+
+    for (auto electrode : electrodesJoint)
     {
+        if (electrode.size() <= 2)
+        {
+            // too small -> not connected to anything
+            continue;
+        }
+
+        this->lamp.electrodes.push_back(electrode);
         // Approximate polyline with straight segments
         std::vector<cv::Point> approx;
         double epsilon = 10.0; // Approximation accuracy
@@ -1091,13 +1179,19 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
         if (isApexOk == ApexSanityResult::APEX_OK)
         {
-        apexesVect.push_back(apex);
+            apexesVect.push_back(apex);
         }
         else
         {
             apexError = isApexOk;
             break;
             }
+    }
+
+    // might be duplicate points because contours might be duplicated
+    if (apexesVect.size() > 2)
+    {
+        RemoveDuplicatePoints(apexesVect, apexesVect);
     }
 
     if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
@@ -1130,6 +1224,10 @@ QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
         std::vector<cv::Point> edgesLeft, edgesRight;
         for (cv::Point apex : this->lamp.wallsApexes)
         {
+            if (std::abs(this->lamp.lampCenter.y - apex.y) > centerApproxTolerance)
+            {
+                continue;
+            }
             if (apex.x < this->lamp.lampCenter.x && edgesLeft.size() < 2)
             {
                 edgesLeft.push_back(apex);
@@ -1159,6 +1257,7 @@ QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
 void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
 {
     bool success = true;
+    this->lamp.ResetLampModel();
     success = this->ProcessElectrodes(imgToProcess);
     if (success)
     {
