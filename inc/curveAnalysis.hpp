@@ -21,27 +21,28 @@ struct OpeningResult
     bool fromQuadratic = false;
     float a = 0.f; // quadratic coefficient in x' = a y'^2 + b y' + c
 };
-
 // --- PCA rotate: make Y' the long axis ---
 inline void rotateToPrincipalY(const std::vector<cv::Point> &pts,
-                               cv::Mat &rot /*Nx2 float*/,
-                               cv::Point &mean,
-                               cv::Mat &eig /*2x2 float, rows=eigenvectors*/)
+                               cv::Mat &rot /* Nx2 float */,
+                               cv::Point2f &mean,          // <- was cv::Point (int)
+                               cv::Mat &eig /* 2x2 float, rows=eigenvectors */)
 {
     CV_Assert(pts.size() >= 2);
-    cv::Mat data((int)pts.size(), 2, CV_32F);
-    for (int i = 0; i < (int)pts.size(); ++i)
-    {
-        data.at<float>(i, 0) = pts[i].x;
-        data.at<float>(i, 1) = pts[i].y;
-    }
-    cv::PCA pca(data, cv::Mat(), cv::PCA::DATA_AS_ROW);
-    mean = {pca.mean.at<float>(0, 0), pca.mean.at<float>(0, 1)};
-    eig = pca.eigenvectors.clone(); // row0 major, row1 minor
-    cv::Mat R = eig.t();            // columns are eigenvectors
 
-    rot.create((int)pts.size(), 2, CV_32F);
-    for (int i = 0; i < (int)pts.size(); ++i)
+    cv::Mat data(static_cast<int>(pts.size()), 2, CV_32F);
+    for (int i = 0; i < static_cast<int>(pts.size()); ++i)
+    {
+        data.at<float>(i, 0) = static_cast<float>(pts[i].x);
+        data.at<float>(i, 1) = static_cast<float>(pts[i].y);
+    }
+
+    cv::PCA pca(data, cv::Mat(), cv::PCA::DATA_AS_ROW);
+    mean = cv::Point2f(pca.mean.at<float>(0, 0), pca.mean.at<float>(0, 1)); // no narrowing
+    eig  = pca.eigenvectors.clone(); // row0 major, row1 minor
+    cv::Mat R = eig.t();             // columns are eigenvectors
+
+    rot.create(static_cast<int>(pts.size()), 2, CV_32F);
+    for (int i = 0; i < static_cast<int>(pts.size()); ++i)
     {
         cv::Vec2f p(pts[i].x - mean.x, pts[i].y - mean.y);
         cv::Vec2f q(
@@ -51,15 +52,15 @@ inline void rotateToPrincipalY(const std::vector<cv::Point> &pts,
         rot.at<float>(i, 1) = q[1];
     }
 
-    // Ensure Y' is the long axis: if spreadX > spreadY, swap axes
-    cv::Scalar meanR, stdR;
-    cv::meanStdDev(rot, meanR, stdR);
-    if (stdR[0] > stdR[1])
+    // Ensure Y' is the long axis: compute spreads per column and swap if needed
+    cv::Scalar m0, s0, m1, s1;
+    cv::meanStdDev(rot.col(0), m0, s0); // spread along X'
+    cv::meanStdDev(rot.col(1), m1, s1); // spread along Y'
+    if (s0[0] > s1[0])
     {
         for (int i = 0; i < rot.rows; ++i)
-        {
             std::swap(rot.at<float>(i, 0), rot.at<float>(i, 1));
-        }
+
         // Swap eig rows so inverse stays consistent with our local axes choice
         cv::Mat es = eig.clone();
         eig.at<float>(0, 0) = es.at<float>(1, 0);
@@ -198,7 +199,7 @@ inline OpeningResult detectOpeningLR(const std::vector<cv::Point> &curve)
     }
 
     cv::Mat rot;
-    cv::Point mean;
+    cv::Point2f mean;
     cv::Mat eig;
     rotateToPrincipalY(curve, rot, mean, eig);
 
