@@ -5,10 +5,10 @@
             "name": "Debug Linux",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/linux-debug/LampAnalyser",
+            "program": "${workspaceFolder}/build/linux/debug/LampAnalyser",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/linux-debug",
+            "cwd": "${workspaceFolder}/build/linux/debug",
             "environment": [
                 {
                     "name": "LD_LIBRARY_PATH",
@@ -54,10 +54,10 @@
             "name": "Launch Linux",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/linux/LampAnalyser",
+            "program": "${workspaceFolder}/build/linux/release/LampAnalyser",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/linux",
+            "cwd": "${workspaceFolder}/build/linux/release",
             "environment": [
                 {
                     "name": "LD_LIBRARY_PATH",
@@ -101,17 +101,16 @@
         },
  {
             "name": "(gdb) Launch",
-            "type": "cppvsdbg",
+            "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/windows-release/LampAnalyser",
+            "program": "${workspaceFolder}/build/windows/release/LampAnalyser",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [
                 {"name": "QT_OPENGL", "value" : "software"},
                 {"name" : "QT_DEBUG_PLUGINS", "value" : "1"}
-            ],
-            "console" :"externalTerminal"
+            ]
         },
     ]
 }

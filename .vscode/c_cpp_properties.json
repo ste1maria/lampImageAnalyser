@@ -11,7 +11,9 @@
                 "/usr/include/x86_64-linux-gnu/qt6/QtWidgets",
                 "/usr/include/x86_64-linux-gnu/qt5/QtGui",
                 "/usr/include/x86_64-linux-gnu/qt6/QtOpenGLWidgets",
-                "/usr/local/include/opencv4"
+                "/usr/local/include/opencv4",
+                "${workspaceFolder}/build/linux/**"
+
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
@@ -28,7 +30,8 @@
                 "C:/Qt/Qt-6.9.0/include/QtWidgets",
                 "C:/Qt/Qt-6.9.0/include/QtGui",
                 "C:/Qt/Qt-6.9.0/include/QtOpenGLWidgets",
-                "C:/opencv/build/include/opencv2"
+                "C:/opencv/build/include/opencv2",
+                "${workspaceFolder}/build/windows/**"
             ],
             "defines": [],
             "compilerPath": "cl",

@@ -41,9 +41,12 @@ private slots:
     void AnalysisFailedSlot(AnalysisFailure failure);
     void StartManualSelection();
     void ResetManualSelection();
+    void SaveImage();
+    void SaveResults();
 
 private:
     Ui::MainWindow *ui;
     std::unique_ptr<ImageProcessor> imgProcessor;
     GLVisualisation * visualisation;
+    const QString serialNumberDefault = "Enter serial #";
 };

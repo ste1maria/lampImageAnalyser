@@ -33,6 +33,8 @@ public:
     bool ProcessElectrodes(QImage& inputImage);
     void RunFullAnalysis(QImage& imgToProcess);
     
+    QString GetResultsString();
+    
     QPair<float, float> CalculateDistanceAngle(cv::Point start, cv::Point end);
     QPair<float, float> CalculateDistanceAngle(QPointF start, QPointF end);
 
@@ -78,7 +80,6 @@ private:
             lampCenter = undeterminedPoint;
             electrodesDistancePx = 0;
             electrodesAngle = 0.0f;
-            pixelMmRatio = 0;
         }
 
     public:
@@ -88,13 +89,14 @@ private:
         QPair<double, double>  wallsThickness;
         std::vector<float> wallsRadii;
         std::vector<QPoint> wallsCenters;
+        double lampWidth;
         QPair<cv::Point, cv::Point> electrodesApexes;
         const cv::Point2f undeterminedPoint = cv::Point2f(0,0);
 
         cv::Point2f lampCenter = undeterminedPoint;
         double electrodesDistancePx = 0;
         double electrodesAngle = 0.0f;
-        double pixelMmRatio = 0;
+        const double pixelMmRatio = 55.5; // const derived from statistics
     };
 
     const double standardLampWidth_mm = 7.00;
@@ -112,4 +114,6 @@ private:
     bool SimplifyLampContours();
     void FindPixelMmRatio(int lampWidthPx);
     QPair<double, double> CalculateWallThickness();
+
+    QString fullResultsString;
 };

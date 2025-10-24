@@ -30,7 +30,7 @@
       "displayName": "Linux (GCC + Ninja)",
       "description": "Builds for linux",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/linux",
+      "binaryDir": "${sourceDir}/build/linux/release",
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "/usr/lib/x86_64-linux-gnu/cmake",
         "CMAKE_BUILD_TYPE": "Release",
@@ -45,7 +45,7 @@
       "displayName": "Linux DEBUG",
       "description": "Builds for linux",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/linux-debug",
+      "binaryDir": "${sourceDir}/build/linux/debug",
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "/usr/lib/x86_64-linux-gnu/cmake",
         "CMAKE_BUILD_TYPE": "Debug",

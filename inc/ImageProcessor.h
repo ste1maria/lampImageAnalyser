@@ -28,15 +28,14 @@ public:
     bool UploadImage(QString fileName);
     void ResetImage();
     bool IsImagePresent();
+    void SaveImage(QString serialNumber);
+    void SaveCalculations(QString serialNumber);
 
 signals:
     void DistanceCalculated(float distance, float angle);
     void AnalysisFailed(AnalysisFailure failure);
 
 public slots:
-    void SaveCalculations();
-    void SaveImage();
-
     void RunEdgeDetectionSlot();
     void RunFullAnalysis();
     void ProcessElectrodesSlot();

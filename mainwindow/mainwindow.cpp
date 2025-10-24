@@ -27,18 +27,23 @@ MainWindow::MainWindow(QWidget *parent)
     ui->pushButtonReset->setEnabled(false);
     ui->pushButtonSaveResults->setEnabled(false);
     ui->pushButtonSaveImage->setEnabled(false);
+    ui->lineEditSerial->setEnabled(false);
+
     ui->labelDistance->clear();
     ui->labelLampResults->clear();
     ui->labelElectrodesResults->clear();
+    ui->lineEditSerial->setText(this->serialNumberDefault);
 
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
     connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
     connect(ui->pushButtonReset, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
     connect(ui->pushButtonRunAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunFullAnalysis);
+    connect(ui->pushButtonSaveResults, &QPushButton::clicked, this, &MainWindow::SaveResults);
 
     connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
     connect(this->imgProcessor.get(), &ImageProcessor::AnalysisFailed, this, &MainWindow::AnalysisFailedSlot);
+    connect(ui->pushButtonSaveImage, &QPushButton::clicked, this, &MainWindow::SaveImage);
 }
 
 MainWindow::~MainWindow()
@@ -68,6 +73,7 @@ void MainWindow::UploadImage()
             ui->pushButtonReset->setEnabled(true);
             ui->pushButtonSaveResults->setEnabled(true);
             ui->pushButtonSaveImage->setEnabled(true);
+            ui->lineEditSerial->setEnabled(true);
 
             ui->labelElectrodesResults->clear();
             ui->labelLampResults->clear();
@@ -166,4 +172,20 @@ void MainWindow::PrintElectrodes
                                             .arg(distance, 0, 'f', 2)
                                             .arg(angle, 0, 'f', 1);
     ui->labelElectrodesResults->setText(electrodesResult);
+}
+
+void MainWindow::SaveImage()
+{
+    QString serialNumber;
+    serialNumber = ui->lineEditSerial->text() == this->serialNumberDefault ? "SN" : ui->lineEditSerial->text();
+
+    this->imgProcessor->SaveImage(serialNumber);
+}
+
+void MainWindow::SaveResults()
+{
+    QString serialNumber;
+    serialNumber = ui->lineEditSerial->text() == this->serialNumberDefault ? "SN" : ui->lineEditSerial->text();
+
+    this->imgProcessor->SaveCalculations(serialNumber);
 }

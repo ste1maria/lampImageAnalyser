@@ -90,6 +90,8 @@ void LampImageAnalyser::SetCurrentImage(const QImage& image)
 void LampImageAnalyser::ResetImage()
 {
     *this->currentImageCv = this->originalImageCv->clone();
+    this->lamp.ResetLampModel();
+    this->fullResultsString = "";
 }
 
 cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
@@ -209,10 +211,7 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
                     for (float radius : radii)
                     {
                         float radiusMm = 0;
-                        if (this->lamp.pixelMmRatio != 0)
-                        {
-                            radiusMm = radius / this->lamp.pixelMmRatio;
-                        }
+                        radiusMm = radius / this->lamp.pixelMmRatio;
                         radiiMm.push_back(radiusMm);
                     }
 
@@ -428,11 +427,11 @@ int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int la
     return apexIndex;
 }
 
-void LampImageAnalyser::FindPixelMmRatio(int lampWidthPx)
-{
-    this->lamp.pixelMmRatio = lampWidthPx / standardLampWidth_mm;
-    qDebug() << "width" << lampWidthPx;
-}
+// void LampImageAnalyser::FindPixelMmRatio(int lampWidthPx)
+// {
+//     this->lamp.pixelMmRatio = lampWidthPx / standardLampWidth_mm;
+//     qDebug() << "width" << lampWidthPx;
+// }
 
 bool LampImageAnalyser::SimplifyLampContours()
 {
@@ -496,7 +495,8 @@ bool LampImageAnalyser::SimplifyLampContours()
         //cv::imshow("true contours", trueContoured);
 
         // find pixel to mm ratio from lamp width
-        this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
+       // this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
+        this->lamp.lampWidth = std::abs((rightmostApexX - leftmostApexX)) / this->lamp.pixelMmRatio;
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
         int lampCenterY = this->lamp.lampCenter.y;
@@ -1219,7 +1219,7 @@ QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
 {
     QPair<double, double> result = QPair<size_t, size_t>(0, 0);
 
-    if ((this->lamp.pixelMmRatio != 0) && !(this->lamp.wallsApexes.empty()))
+    if (!(this->lamp.wallsApexes.empty()))
     {
         std::vector<cv::Point> edgesLeft, edgesRight;
         for (cv::Point apex : this->lamp.wallsApexes)
@@ -1258,6 +1258,7 @@ void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
 {
     bool success = true;
     this->lamp.ResetLampModel();
+    this->fullResultsString = "";
     success = this->ProcessElectrodes(imgToProcess);
     if (success)
     {
@@ -1269,13 +1270,36 @@ void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
             double electrodesDistanceMm = ratio != 0 ? this->lamp.electrodesDistancePx / ratio : 0;
             QPoint coordElectrodeFirst(this->lamp.electrodesApexes.first.x, this->lamp.electrodesApexes.first.y);
             QPoint coordElectrodeSecond(this->lamp.electrodesApexes.second.x, this->lamp.electrodesApexes.second.y);
-            double angle = this->lamp.electrodesAngle;
-        
-            emit ElectrodesProcessed(coordElectrodeFirst, coordElectrodeSecond, electrodesDistanceMm, angle);
+            double electrodesAngle = this->lamp.electrodesAngle;
+            
+            const QChar delimeter = ',';
+            for (auto wallCenter : this->lamp.wallsCenters)
+            {
+                fullResultsString += QString("(%1;%2)").arg(wallCenter.x()).arg(wallCenter.y()) + delimeter;
+            }
+
+            for (auto wallRadius : this->lamp.wallsRadii)
+            {
+                fullResultsString += QString::number(wallRadius, 'f', 2) + delimeter;
+            }
+
+            fullResultsString += QString::number(electrodesDistanceMm, 'f', 2) + delimeter;
+            fullResultsString += QString::number(electrodesAngle, 'f', 2) + delimeter;
+
+            fullResultsString += QString::number(this->lamp.wallsThickness.first, 'f', 2) + delimeter
+                                + QString::number(this->lamp.wallsThickness.second, 'f', 2) + delimeter;
+            
+            fullResultsString += QString::number(this->lamp.lampWidth, 'f', 2) + "\r\n";
+
+            emit ElectrodesProcessed(coordElectrodeFirst, coordElectrodeSecond, electrodesDistanceMm, electrodesAngle);
             emit LampWallsProcessed(this->lamp.wallsCenters, this->lamp.wallsRadii, this->lamp.wallsThickness);
 
             emit ImageProcessed(this->currentImageCv);
         }
     }
+}
 
+QString LampImageAnalyser::GetResultsString()
+{
+    return this->fullResultsString;
 }

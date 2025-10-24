@@ -57,6 +57,7 @@ bool ImageProcessor::UploadImage(QString fileName)
     this->currentImage = image.convertToFormat(QImage::Format_BGR888);
     this->originalImage = currentImage.copy();
     this->ShowImage(currentImage);
+    this->analyser->ResetImage();
     this->analyser->SetOriginalImage(this->originalImage);
     this->analyser->SetCurrentImage(this->currentImage);
 
@@ -68,12 +69,12 @@ void ImageProcessor::ShowImage(const QImage& image)
     this->visualization->ShowImage(image);
 }
 
-void ImageProcessor::SaveImage()
+void ImageProcessor::SaveImage(QString serialNumber)
 {
     QString filename = QFileDialog::getSaveFileName(
             nullptr,
             "Save Image As",
-            "lamp.png",
+            QString("lamp_%1.png").arg(serialNumber),
             "Images (*.png *.bmp);;All Files (*)"
     );
 
@@ -83,19 +84,23 @@ void ImageProcessor::SaveImage()
 }
 
 
-void ImageProcessor::SaveCalculations()
+void ImageProcessor::SaveCalculations(QString serialNumber)
 {
     QString filename = QFileDialog::getSaveFileName(
             nullptr,
             "Save Calculations As",
-            "lamp_calculations.txt",
-            "Text file (*.txt *.csv);;All Files (*)"
+            QString("lamp_%1_calc.csv").arg(serialNumber),
+            "Text file (*.csv);;All Files (*)"
     );
     QFile data(filename);
 
     if (data.open(QFile::WriteOnly | QFile::Truncate))
     {
         QTextStream out(&data);
+        QString header = "SN,r(1),r(2),r(3),r(4),R(1),R(2),R(3),R(4),Distance electrodes,"
+                            "Angle electrodes,Left wall,RightWall,Lamp width\r\n";
+        QString fullRow = header + serialNumber + ',' + this->analyser->GetResultsString();
+        out << fullRow;
     }
 }
 
