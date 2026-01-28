@@ -12,6 +12,7 @@
 
 #include <unordered_set>
 #include <algorithm>
+#include <numeric>
 
 const int centerApproxTolerance = 20; // px
 
@@ -41,7 +42,14 @@ cv::Scalar colours[] = {
     cv::Scalar(10, 255, 0),
     cv::Scalar(0, 255, 255),
     cv::Scalar(64, 64, 255),
-    cv::Scalar(255, 128, 128)
+    cv::Scalar(255, 128, 128),
+    cv::Scalar(255, 20, 33),
+    cv::Scalar(0, 20, 33),
+    cv::Scalar(255, 100, 10),
+    cv::Scalar(20, 20, 33),
+    cv::Scalar(20, 20, 255),
+    cv::Scalar(66, 55, 33),
+    cv::Scalar(50, 50, 50)
 };
 
 void onMouse(int event, int x, int y, int flags, void* userdata)
@@ -433,6 +441,168 @@ int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int la
 //     qDebug() << "width" << lampWidthPx;
 // }
 
+// double CalculateMeanXAxis(const std::vector<cv::Point>* data)
+// {
+//     size_t size = data->size();
+//     if (size == 0)
+//     {
+//         return 0;
+//     }
+
+//     double sum = 0;
+
+//     for (auto point : *data)
+//     {
+//         sum += point.x;
+//     }
+
+//     return sum / size;
+// }
+
+// double CalcStdDevXAxis(const std::vector<cv::Point>* data)
+// {
+//     size_t size = data->size();
+//     if (size == 0)
+//     {
+//         return 0;
+//     }
+    
+//     double mean = CalculateMeanXAxis(data);
+
+//     double sumSquaredDiff = 0;
+
+//     for (cv::Point point : *data)
+//     {
+//         sumSquaredDiff += std::pow(point.x - mean, 2);
+//     }
+
+//     return std::sqrt(sumSquaredDiff / size);
+// }
+
+// void RemoveOutliersXAxis(const std::vector<cv::Point>* input, std::vector<cv::Point>* output)
+// {
+//     double stdDev = CalcStdDevXAxis(input);
+//     double mean = CalculateMeanXAxis(input);
+
+//     std::vector<cv::Point> result;
+
+//     for (cv::Point point : *input)
+//     {
+//         if (std::abs((point.x - mean) / stdDev) < 3)
+//         {
+//             result.push_back(point);
+//         }
+//     }
+//     *output = result;
+// }
+
+static int sign(double v, double eps = 1)
+{
+    int result = 0;
+    if (v > eps)
+    {
+        result = 1;
+    }
+    if (v < -eps)
+    {
+        result = -1;
+    }
+    return result;
+}
+
+void DivideLongContours(const std::vector<std::vector<cv::Point>>& input, std::vector<std::vector<cv::Point>> &output)
+{
+    std::vector<std::vector<cv::Point>> divided;
+
+    for (std::vector<cv::Point> curve : input)
+    {   
+        int derivStep = 5;
+        int refineRad = 10;
+        int confirmK = 15;
+        int n = curve.size();
+        std::vector<int> extrema;
+        extrema.push_back(0);
+        if (n > 3)
+        {
+            auto slopeSignAt = [&](int i) -> int 
+            {
+                int a = std::max(0, i - derivStep);
+                int b = std::min(n - 1, i + derivStep);
+                double s = curve[b].y - curve[a].y;
+                return sign(s);
+            };
+
+            int i0 = 0;
+            int prev = 0;
+            // see if the slope changes anywhere along the curve
+            while (i0 < n && (prev = slopeSignAt(i0)) == 0) 
+            {
+                ++i0;
+            }
+            // reached size, so it is already monotonous
+            if (i0 == n) 
+            {
+                divided.push_back(curve);
+                continue;
+            }
+            
+            for (int i = i0 + 1; i < n; ++i) 
+            {
+                int s = slopeSignAt(i);
+                if (s == 0 || s == prev) 
+                {
+                    continue;
+                }
+
+                // Sign flip: + -> - is a local max, - -> + is a local min.
+                int a = std::max(0, i - refineRad);
+                int b = std::min(n - 1, i + refineRad);
+
+                int best = i;
+                if (prev == +1 && s == -1) 
+                {
+                    // local maximum: refine to max Y
+                    double bestY = curve[i].y;
+                    for (int k = a; k <= b; ++k) 
+                    {
+                        if (curve[k].y > bestY) 
+                        { 
+                            bestY = curve[k].y; 
+                            best = k; 
+                        }
+                    }
+                } 
+                else if (prev == -1 && s == +1) 
+                {
+                    // local minimum: refine to min Y
+                    double bestY = curve[i].y;
+                    for (int k = a; k <= b; ++k) 
+                    {
+                        if (curve[k].y < bestY) 
+                        { 
+                            bestY = curve[k].y; 
+                            best = k; 
+                        }
+                    }
+                }
+
+                // Avoid duplicates / near-duplicates
+                if (std::abs(best - extrema.back()) > 50)
+                {
+                    auto segmentBegin = extrema.back();
+                    extrema.push_back(best);
+                    std::vector<cv::Point> segment(curve.begin() + segmentBegin, curve.begin() + extrema.back());
+                    if (segment.size() > 100)
+                    {
+                        divided.push_back(segment);
+                    }
+                }
+            }
+        }
+    }
+    output = divided;
+}
+
 bool LampImageAnalyser::SimplifyLampContours()
 {
     bool success = true;
@@ -448,16 +618,27 @@ bool LampImageAnalyser::SimplifyLampContours()
         std::vector<std::vector<cv::Point>> trueContours;
         int leftmostApexX(0), rightmostApexX(0);
 
+        std::vector<std::vector<cv::Point>> segments;
+        // split contours into monotonous segments
+        DivideLongContours(this->contours, segments);
+
         // filter out contours that do not resemble lamp walls
-        for (size_t i = 0; i < this->contours.size(); i++)
+        for (size_t i = 0; i < segments.size(); i++)
         {
-            if (this->contours[i].size() < 200)
+            if (segments[i].size() < 100)
             {  
                 continue;
             }
             
-            std::vector<cv::Point> contour = this->contours[i];
-
+            std::vector<cv::Point> contour = segments[i];
+            cv::polylines(trueContoured, contour, false, colours[i]);
+            qDebug() << i << ":";
+            for (cv::Point point : contour)
+            {
+                qDebug() << point.x << "\t" << point.y;
+            }
+            qDebug() << "\r\n";
+            
             std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
                 return a.y < b.y;
             });
@@ -490,9 +671,9 @@ bool LampImageAnalyser::SimplifyLampContours()
             }
 
             trueContours.push_back(contour);
-            cv::polylines(trueContoured, contour, false, colours[i]);
+            //cv::polylines(trueContoured, contour, false, colours[i]);
         }
-        //cv::imshow("true contours", trueContoured);
+        cv::imshow("raw contours", trueContoured);
 
         // find pixel to mm ratio from lamp width
        // this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
