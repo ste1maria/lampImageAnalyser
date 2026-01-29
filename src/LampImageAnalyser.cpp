@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <numeric>
 
-const int centerApproxTolerance = 20; // px
+const int centerApproxTolerance = 30; // px
 
 std::vector<cv::Scalar> coloursRandom = {
     { 231,  72,  28},
@@ -182,12 +182,12 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
               }
             );
         
-        cv::Mat tracedImg = img.clone();
-        for (size_t i = 0; i < traced.size(); ++i)
-        {
-            cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
-        }
-        //cv::imshow("traced lamp", tracedImg);
+        // cv::Mat tracedImg = img.clone();
+        // for (size_t i = 0; i < traced.size(); ++i)
+        // {
+        //     cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+        // }
+        // cv::imshow("traced lamp", tracedImg);
         this->contours.clear();
         this->contours = traced;
 
@@ -1319,9 +1319,9 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     std::vector<std::vector<cv::Point>> electrodesTemp;
 
     cv::Ptr<cv::ximgproc::FastLineDetector> fld =
-        cv::ximgproc::createFastLineDetector(/*length_threshold=*/20,
+        cv::ximgproc::createFastLineDetector(/*length_threshold=*/40,
                                             /*distance_threshold=*/1.4142,
-                                            /*canny_th1=*/20, /*canny_th2=*/75,
+                                            /*canny_th1=*/25, /*canny_th2=*/75,
                                             /*aperture=*/3, /*do_merge=*/true);
 
     std::vector<cv::Vec4f> lines;
@@ -1399,7 +1399,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
             continue;
         }
 
-                // sanity check
+        // sanity check
 
         ApexSanityResult isApexOk = ApexSanityCheck(approx, apex, imgGray.rows);
 
