@@ -43,7 +43,8 @@ private slots:
     void ResetManualSelection();
     void SaveImage();
     void SaveResults();
-
+    void SaveContours();
+    
 private:
     Ui::MainWindow *ui;
     std::unique_ptr<ImageProcessor> imgProcessor;

@@ -34,6 +34,7 @@ public:
     void RunFullAnalysis(QImage& imgToProcess);
     
     QString GetResultsString();
+    QString GetContoursTable();
     
     QPair<float, float> CalculateDistanceAngle(cv::Point start, cv::Point end);
     QPair<float, float> CalculateDistanceAngle(QPointF start, QPointF end);

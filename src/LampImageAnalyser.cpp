@@ -1529,3 +1529,35 @@ QString LampImageAnalyser::GetResultsString()
 {
     return this->fullResultsString;
 }
+
+QString LampImageAnalyser::GetContoursTable()
+{
+    QString table = "wall 1\t\t\twall2\t\t\twall3\t\t\twall4\r\n";
+
+    int maxContour = 0;
+    for (auto contour : this->lamp.lampContours)
+    {
+        if (contour.size() > maxContour)
+        {
+            maxContour = contour.size();
+        }
+    }
+
+    for (int i = 0; i < maxContour; ++i)
+    {
+        for (auto contour : this->lamp.lampContours)
+        {
+            if (contour.size() > i)
+            {
+                table += QString("%1\t%2\t\t").arg(contour[i].x).arg(contour[i].y);
+            }
+            else
+            {
+                table += "\t\t\t";
+            }
+        }
+        table += "\r\n";
+
+    }
+    return table;
+}

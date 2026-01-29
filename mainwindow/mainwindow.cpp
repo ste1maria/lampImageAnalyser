@@ -26,6 +26,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->pushButtonManualSelection->setEnabled(false);
     ui->pushButtonReset->setEnabled(false);
     ui->pushButtonSaveResults->setEnabled(false);
+    ui->pushButtonSaveContours->setEnabled(false);
     ui->pushButtonSaveImage->setEnabled(false);
     ui->lineEditSerial->setEnabled(false);
 
@@ -39,6 +40,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->pushButtonReset, &QPushButton::clicked, this, &MainWindow::ResetImageSlot);
     connect(ui->pushButtonRunAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunFullAnalysis);
     connect(ui->pushButtonSaveResults, &QPushButton::clicked, this, &MainWindow::SaveResults);
+    connect(ui->pushButtonSaveContours, &QPushButton::clicked, this, &MainWindow::SaveContours);
+
+
 
     connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
@@ -72,6 +76,7 @@ void MainWindow::UploadImage()
             ui->pushButtonManualSelection->setEnabled(true);
             ui->pushButtonReset->setEnabled(true);
             ui->pushButtonSaveResults->setEnabled(true);
+            ui->pushButtonSaveContours->setEnabled(true);
             ui->pushButtonSaveImage->setEnabled(true);
             ui->lineEditSerial->setEnabled(true);
 
@@ -191,4 +196,12 @@ void MainWindow::SaveResults()
     serialNumber = ui->lineEditSerial->text() == this->serialNumberDefault ? "SN" : ui->lineEditSerial->text();
 
     this->imgProcessor->SaveCalculations(serialNumber);
+}
+
+void MainWindow::SaveContours()
+{
+    QString serialNumber;
+    serialNumber = ui->lineEditSerial->text() == this->serialNumberDefault ? "SN" : ui->lineEditSerial->text();
+
+    this->imgProcessor->SaveContours(serialNumber);
 }

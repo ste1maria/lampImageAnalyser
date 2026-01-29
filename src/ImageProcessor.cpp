@@ -104,6 +104,24 @@ void ImageProcessor::SaveCalculations(QString serialNumber)
     }
 }
 
+void ImageProcessor::SaveContours(QString serialNumber)
+{
+    QString filename = QFileDialog::getSaveFileName(
+            nullptr,
+            "Save Lamp Contours As",
+            QString("lamp_%1_contours.csv").arg(serialNumber),
+            "Text file (*.csv);;All Files (*)"
+    );
+
+    QFile data(filename);
+
+    if (data.open(QFile::WriteOnly | QFile::Truncate))
+    {
+        QTextStream out(&data);
+        out << this->analyser->GetContoursTable();
+    }
+}
+
 void ImageProcessor::RunEdgeDetectionSlot()
 {
     QImage imgToProcess = this->originalImage.copy();

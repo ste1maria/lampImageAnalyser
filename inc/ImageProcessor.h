@@ -30,6 +30,7 @@ public:
     bool IsImagePresent();
     void SaveImage(QString serialNumber);
     void SaveCalculations(QString serialNumber);
+    void SaveContours(QString serialNumber);
 
 signals:
     void DistanceCalculated(float distance, float angle);
