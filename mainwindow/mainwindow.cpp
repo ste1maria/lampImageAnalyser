@@ -78,6 +78,9 @@ void MainWindow::UploadImage()
             ui->labelElectrodesResults->clear();
             ui->labelLampResults->clear();
             ui->labelDistance->setText("Select two dots to calculate distance");
+
+            QFileInfo fi(fileName);
+            ui->lineEditSerial->setText(fi.baseName());
         }
     }
 }
