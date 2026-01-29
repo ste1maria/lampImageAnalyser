@@ -1532,7 +1532,7 @@ QString LampImageAnalyser::GetResultsString()
 
 QString LampImageAnalyser::GetContoursTable()
 {
-    QString table = "wall 1\t\t\twall2\t\t\twall3\t\t\twall4\r\n";
+    QString table = "wall 1 x\twall 1 y\twall2 x\twall2 y\twall3 x\twall 3 y\twall4 x\twall4 y\r\n";
 
     int maxContour = 0;
     for (auto contour : this->lamp.lampContours)
@@ -1549,11 +1549,11 @@ QString LampImageAnalyser::GetContoursTable()
         {
             if (contour.size() > i)
             {
-                table += QString("%1\t%2\t\t").arg(contour[i].x).arg(contour[i].y);
+                table += QString("%1\t%2\t").arg(contour[i].x).arg(contour[i].y);
             }
             else
             {
-                table += "\t\t\t";
+                table += " \t \t";
             }
         }
         table += "\r\n";
