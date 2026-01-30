@@ -44,6 +44,7 @@ private slots:
     void SaveImage();
     void SaveResults();
     void SaveContours();
+    void BatchProcessFolder();
     
 private:
     Ui::MainWindow *ui;

@@ -29,8 +29,8 @@ public:
     void ResetImage();
     bool IsImagePresent();
     void SaveImage(QString serialNumber);
-    void SaveCalculations(QString serialNumber);
-    void SaveContours(QString serialNumber);
+    void SaveCalculations(QString serialNumber, bool batch = false);
+    void SaveContours(QString serialNumber, bool batch = false);
 
 signals:
     void DistanceCalculated(float distance, float angle);

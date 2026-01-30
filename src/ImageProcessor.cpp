@@ -84,14 +84,20 @@ void ImageProcessor::SaveImage(QString serialNumber)
 }
 
 
-void ImageProcessor::SaveCalculations(QString serialNumber)
+void ImageProcessor::SaveCalculations(QString serialNumber, bool batch)
 {
-    QString filename = QFileDialog::getSaveFileName(
-            nullptr,
-            "Save Calculations As",
-            QString("lamp_%1_calc.csv").arg(serialNumber),
-            "Text file (*.csv);;All Files (*)"
-    );
+    QString filenameString = QString("lamp_%1_calc.csv").arg(serialNumber);
+    QString filename = filenameString;
+    if (!batch)
+    {
+        QString filename = QFileDialog::getSaveFileName(
+                nullptr,
+                "Save Calculations As",
+                filenameString,
+                "Text file (*.csv);;All Files (*)"
+        );
+    }
+
     QFile data(filename);
 
     if (data.open(QFile::WriteOnly | QFile::Truncate))
@@ -104,14 +110,19 @@ void ImageProcessor::SaveCalculations(QString serialNumber)
     }
 }
 
-void ImageProcessor::SaveContours(QString serialNumber)
+void ImageProcessor::SaveContours(QString serialNumber, bool batch)
 {
-    QString filename = QFileDialog::getSaveFileName(
-            nullptr,
-            "Save Lamp Contours As",
-            QString("lamp_%1_contours.csv").arg(serialNumber),
-            "Text file (*.csv);;All Files (*)"
-    );
+    QString filenameString = QString("lamp_%1_contours.csv").arg(serialNumber);
+    QString filename = filenameString;
+    if (!batch)
+    {
+        QString filename = QFileDialog::getSaveFileName(
+                nullptr,
+                "Save Lamp Contours As",
+                filenameString,
+                "Text file (*.csv);;All Files (*)"
+        );
+    }
 
     QFile data(filename);
 

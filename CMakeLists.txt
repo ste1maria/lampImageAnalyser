@@ -47,6 +47,7 @@ set(SOURCES
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+
 set_target_properties(${PROJECT_NAME} PROPERTIES
     WIN32_EXECUTABLE TRUE  # hides console on Windows
     MACOSX_BUNDLE TRUE     # makes a proper .app on macOS

@@ -41,8 +41,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->pushButtonRunAnalysis, &QPushButton::clicked, this->imgProcessor.get(), &ImageProcessor::RunFullAnalysis);
     connect(ui->pushButtonSaveResults, &QPushButton::clicked, this, &MainWindow::SaveResults);
     connect(ui->pushButtonSaveContours, &QPushButton::clicked, this, &MainWindow::SaveContours);
-
-
+    connect(ui->pushButtonBatch, &QPushButton::clicked, this, &MainWindow::BatchProcessFolder);
 
     connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
@@ -204,4 +203,55 @@ void MainWindow::SaveContours()
     serialNumber = ui->lineEditSerial->text() == this->serialNumberDefault ? "SN" : ui->lineEditSerial->text();
 
     this->imgProcessor->SaveContours(serialNumber);
+}
+
+void MainWindow::BatchProcessFolder()
+{
+    QString dirName = QFileDialog::getExistingDirectory
+    (
+        this, tr("Open Directory"),
+        QDir::currentPath(),
+        QFileDialog::ShowDirsOnly
+    );
+
+    if (dirName.isEmpty())
+    {
+        return; // user canceled
+    }
+    else
+    {
+        QDir dir(dirName);
+
+        QDir::Filters filter = QDir::Files | QDir::NoDotAndDotDot;
+        QFileInfoList list = dir.entryInfoList();
+
+        for (int i = 0; i < list.size(); ++i)
+        {
+            QFileInfo fileInfo = list.at(i);
+            QString fileName = fileInfo.fileName();
+            if (!fileName.endsWith("png") && !fileName.endsWith("jpg"))
+            {
+                continue;
+            }
+
+            if (this->imgProcessor->UploadImage(dirName + "/" + fileName))
+            {
+                ui->labelElectrodesResults->clear();
+                ui->labelLampResults->clear();
+
+                QFileInfo fi(fileName);
+                ui->lineEditSerial->setText(fi.baseName());
+
+                this->imgProcessor->RunFullAnalysis();
+
+                QString serialNumber;
+                serialNumber = fi.baseName();
+
+                this->imgProcessor->SaveCalculations(serialNumber, true);
+                this->imgProcessor->SaveContours(serialNumber, true);
+            }
+
+        }
+
+    }
 }

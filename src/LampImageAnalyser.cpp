@@ -1553,7 +1553,7 @@ QString LampImageAnalyser::GetContoursTable()
             }
             else
             {
-                table += " \t \t";
+                table += ".\t.\t";
             }
         }
         table += "\r\n";
