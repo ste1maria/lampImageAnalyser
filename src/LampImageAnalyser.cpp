@@ -102,18 +102,25 @@ void LampImageAnalyser::ResetImage()
     this->fullResultsString = "";
 }
 
-cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 6) {
+cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 10) 
+{
     CV_Assert(thin255.type() == CV_8U);
-    cv::Mat skel; cv::threshold(thin255, skel, 0, 1, cv::THRESH_BINARY); // 0/1
+    cv::Mat skel; 
+    cv::threshold(thin255, skel, 0, 1, cv::THRESH_BINARY); // 0/1
 
     // 8-neighborhood count (ignore center)
-    cv::Mat K = cv::Mat::ones(3,3,CV_8U); K.at<uchar>(1,1) = 0;
+    cv::Mat K = cv::Mat::ones(3,3,CV_8U); 
+    K.at<uchar>(1,1) = 0;
 
-    for (int i = 0; i < iterations; ++i) {
+    for (int i = 0; i < iterations; ++i) 
+    {
         cv::Mat nbrs;
         cv::filter2D(skel, nbrs, CV_8U, K, cv::Point(-1,-1), 0, cv::BORDER_CONSTANT);
         cv::Mat endpoints = (skel == 1) & (nbrs == 1);  // degree==1
-        if (cv::countNonZero(endpoints) == 0) break;
+        if (cv::countNonZero(endpoints) == 0) 
+        {
+            break;
+        }
         skel.setTo(0, endpoints);
     }
     skel *= 255;
@@ -151,16 +158,26 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
         cv::Mat gradient_abs;
         cv::convertScaleAbs(gradient, gradient_abs);  
 
+        // make max brightness
+        cv::normalize(gradient_abs, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        // cv::imshow("normalized", normalized);
+
         // extract a range of brightness
         cv::Mat thresh;
-        cv::threshold(gradient_abs, thresh, 50, 255, cv::THRESH_TOZERO_INV);
-        cv::threshold(thresh, thresh, 20, 255, cv::THRESH_TOZERO);
+        cv::threshold(normalized, thresh, 20, 255, cv::THRESH_TOZERO);
+        cv::threshold(thresh, thresh, 100, 100, cv::THRESH_TOZERO_INV);
+        cv::blur(thresh, thresh, cv::Size(5,5));
+        cv::imshow("thresh1", thresh);
+
         // normalize again
-        cv::normalize(thresh, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    
-        // get rid of "halo" around true edges 
+        cv::Mat normThresh;
+        cv::normalize(thresh, normThresh, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        //cv::imshow("normalized2", thresh);
+
+        // get rid of "halo" and noisy lines
         cv::Mat edgesMask;
-        cv::inRange(normalized, 50, 200, edgesMask);
+        cv::inRange(normThresh, 25, 200, edgesMask);
+        //cv::imshow("edgesMask", edgesMask);
 
         // connect gaps
         cv::dilate(edgesMask, edgesMask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5,3)));
@@ -170,11 +187,12 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
         // THINNING
         cv::Mat thinEdges;
         cv::ximgproc::thinning(edgesMask, thinEdges, cv::ximgproc::THINNING_ZHANGSUEN);
-        //cv::imshow("contoured", thinEdges);
-
+        cv::imshow("contoured", thinEdges);
+        
+        cv::Mat finalEdges = pruneSpurs(thinEdges);
         // TRACING
         std::vector<std::vector<cv::Point>> traced;
-        cv::findContours(thinEdges, traced, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+        cv::findContours(finalEdges, traced, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
         std::sort(traced.begin(), traced.end(),
               [](auto &a, auto &b)
               { 
@@ -182,12 +200,13 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
               }
             );
         
-        // cv::Mat tracedImg = img.clone();
-        // for (size_t i = 0; i < traced.size(); ++i)
-        // {
-        //     cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
-        // }
-        // cv::imshow("traced lamp", tracedImg);
+        cv::Mat tracedImg = img.clone();
+        for (size_t i = 0; i < traced.size(); ++i)
+        {
+            cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+        }
+        cv::imshow("traced lamp", tracedImg);
+
         this->contours.clear();
         this->contours = traced;
 
@@ -510,6 +529,47 @@ static int sign(double v, double eps = 1)
     return result;
 }
 
+void CutCloseToCenter
+(
+    const std::vector<std::vector<cv::Point>>& input, 
+    std::vector<std::vector<cv::Point>> &output, 
+    int center, 
+    int allowedDistance
+)
+{
+    std::vector<std::vector<cv::Point>> divided;
+
+    for (auto contour : input)
+    {
+        bool aboveLimit = false;
+        size_t pieceStart = 0;
+        size_t skipStart  = 0;  
+
+        for (int i = 0; i < contour.size(); ++i)
+        {
+            bool isOutside = std::abs(contour[i].y - center) > allowedDistance;
+            if (!aboveLimit && isOutside)
+            {
+                // split here
+                if (i > pieceStart)
+                {
+                    divided.emplace_back(contour.begin() + pieceStart, contour.begin() + i);
+
+                }
+                aboveLimit = true;
+                skipStart = i;
+            }
+            else if (aboveLimit && !isOutside)
+            {
+                // cut off points that we skipped
+                pieceStart = i;
+                aboveLimit = false;
+            }
+        }
+    }
+    output = divided;
+}
+
 void DivideLongContours(const std::vector<std::vector<cv::Point>>& input, std::vector<std::vector<cv::Point>> &output)
 {
     std::vector<std::vector<cv::Point>> divided;
@@ -518,7 +578,7 @@ void DivideLongContours(const std::vector<std::vector<cv::Point>>& input, std::v
     {   
         int derivStep = 5;
         int refineRad = 10;
-        int confirmK = 15;
+        int confirmK = 20;
         int n = curve.size();
         std::vector<int> extrema;
         extrema.push_back(0);
@@ -597,10 +657,101 @@ void DivideLongContours(const std::vector<std::vector<cv::Point>>& input, std::v
                         divided.push_back(segment);
                     }
                 }
+
+                prev = s;
             }
         }
     }
     output = divided;
+}
+
+// TODO: larger value of tolerance for larger images
+// Find indexes of similar contours
+// Returns a vector of pairs where each pair contains indexes of similar contours
+std::vector<std::vector<cv::Point>> RemoveSimilarContours
+(
+    const std::vector<std::vector<cv::Point>>& contours,
+    double distanceTolerance = 20.0
+)
+{
+    std::vector<std::vector<cv::Point>> curves = contours;
+    std::vector<std::pair<size_t, size_t>> similarPairs;
+    std::vector<std::vector<cv::Point>> cleanedContours;
+    
+    for (size_t i = 0; i < curves.size(); ++i)
+    {
+        std::sort(curves[i].begin(), curves[i].end(), [](const cv::Point& a, const cv::Point& b) {
+            return a.y < b.y;
+        });
+        std::vector<cv::Point> approx;
+        double epsilon = 4.0; // Adjust for more/less smoothing
+        cv::approxPolyDP(curves[i], approx, epsilon, false);
+        curves[i] = approx;
+        // Resample curve with equally distributed points
+        curves[i] = resampleByArcLen(curves[i], 2.0f, false);
+    }
+
+    for (size_t i = 0; i < curves.size(); ++i)
+    {
+        for (size_t j = i + 1; j < curves.size(); ++j)
+        {
+
+            const auto& contour1 = curves[i];
+            const auto& contour2 = curves[j];
+            
+            if (contour1.empty() || contour2.empty())
+            {
+                continue;
+            }
+            
+            // Compare spatial extent (bounding boxes)
+            cv::Rect bbox1 = cv::boundingRect(contour1);
+            cv::Rect bbox2 = cv::boundingRect(contour2);
+            
+            double centerDist = cv::norm(
+                cv::Point2f(bbox1.x + bbox1.width / 2.0f, bbox1.y + bbox1.height / 2.0f) -
+                cv::Point2f(bbox2.x + bbox2.width / 2.0f, bbox2.y + bbox2.height / 2.0f)
+            );
+            
+            if (centerDist > distanceTolerance)
+            {
+                continue;
+            }
+            
+            // Compare average point-to-point distances
+            double avgDist = 0.0;
+            size_t minSize = std::min(contour1.size(), contour2.size());
+            for (size_t k = 0; k < minSize; ++k)
+            {
+                avgDist += cv::norm(contour1[k] - contour2[k]);
+            }
+            avgDist /= minSize;
+            
+            if (avgDist < distanceTolerance)
+            {
+                similarPairs.push_back({i, j});
+            }
+        }
+    }
+
+    for (int i = 0; i < contours.size(); ++i)
+    {
+        bool toBeRemoved = false;
+        for (auto pair : similarPairs)
+        {
+            if (pair.second == i)
+            {
+                toBeRemoved = true;
+                break;
+            }
+        }
+        if (!toBeRemoved)
+        {
+            cleanedContours.push_back(contours[i]);
+        }
+    }
+    
+    return cleanedContours;
 }
 
 bool LampImageAnalyser::SimplifyLampContours()
@@ -619,24 +770,57 @@ bool LampImageAnalyser::SimplifyLampContours()
         int leftmostApexX(0), rightmostApexX(0);
 
         std::vector<std::vector<cv::Point>> segments;
-        // split contours into monotonous segments
-        DivideLongContours(this->contours, segments);
 
-        for (size_t i = 0; i < segments.size(); i++)
+        // split contours into monotonous segments
+        //DivideLongContours(this->contours, segments);
+
+        // cut points far from center (easier than divide into monotonous parts at extrema)
+        CutCloseToCenter(this->contours, segments, this->lamp.lampCenter.y, 3*this->lamp.pixelMmRatio);
+
+        int i = 0;
+        // for (auto segment : segments)
+        // {
+        //     cv::polylines(trueContoured, segment, false, colours[i]);
+
+        //     i++;
+        // }
+        // cv::imshow("divided contours", trueContoured);
+
+        // remove duplicates
+        cv::Mat cleacned = this->currentImageCv->clone();
+        std::vector<std::vector<cv::Point>> segmentsCleaned;
+        segmentsCleaned = RemoveSimilarContours(segments);
+
+        // i = 0;
+        // for (auto segment : segmentsCleaned)
+        // {
+        //     cv::polylines(cleacned, segment, false, colours[i]);
+        //     cv::putText(cleacned, 
+        //         cv::String(std::to_string(i)), 
+        //         segment[0],
+        //         cv::FONT_HERSHEY_SIMPLEX,
+        //         0.5,
+        //         colours[i]
+        //     );
+        //     i++;
+        // }
+        // cv::imshow("cleaned contours", cleacned);
+
+        for (size_t i = 0; i < segmentsCleaned.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
             // TODO: better method?
-            if (segments[i].size() < 100)
+            if (segmentsCleaned[i].size() < 100)
             {  
                 continue;
             }
             
-            std::vector<cv::Point> contour = segments[i];
+            std::vector<cv::Point> contour = segmentsCleaned[i];
             cv::polylines(trueContoured, contour, false, colours[i]);
             
-            std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
-                return a.y < b.y;
-            });
+            // std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
+            //     return a.y < b.y;
+            // });
             
             OpeningResult r = detectOpeningLR(contour);
             Orientation orient = (r.opening == OpeningLR::Left ? Orientation::LEFT :
@@ -666,12 +850,11 @@ bool LampImageAnalyser::SimplifyLampContours()
             }
 
             trueContours.push_back(contour);
-            //cv::polylines(trueContoured, contour, false, colours[i]);
+            cv::polylines(trueContoured, contour, false, colours[i]);
         }
-        //cv::imshow("raw contours", trueContoured);
+        cv::imshow("raw contours", trueContoured);
 
         // find pixel to mm ratio from lamp width
-       // this->FindPixelMmRatio(rightmostApexX - leftmostApexX);
         this->lamp.lampWidth = std::abs((rightmostApexX - leftmostApexX)) / this->lamp.pixelMmRatio;
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
@@ -728,7 +911,7 @@ bool LampImageAnalyser::SimplifyLampContours()
             simples.push_back(simple);
         }
 
-        if (simples.size() < 4)
+        if (simples.size() != 4)
         {
             success = false;
         }
