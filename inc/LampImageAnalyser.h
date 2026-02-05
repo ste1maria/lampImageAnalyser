@@ -103,6 +103,7 @@ private:
     const double standardLampWidth_mm = 7.00;
 
     std::vector<std::vector<cv::Point>> contours;
+    double sobelThreshMultiplierDefault = 1;
     Lamp lamp;
     cv::Mat edgeDetectedImage;
     std::shared_ptr<cv::Mat> originalImageCv;

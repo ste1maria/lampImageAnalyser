@@ -127,6 +127,141 @@ cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 10)
     return skel;
 }
 
+cv::Mat SobelFilter(cv::Mat& inputImg, double threshMultiplier)
+{
+    cv::Mat imgBlur;
+    //cv::blur(imgGray, imgBlur, cv::Size(10,10));
+    cv::medianBlur(inputImg, imgBlur, 15);
+
+    cv::Mat normalized;
+    cv::normalize(imgBlur, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    cv::threshold(normalized, normalized, 225, 255, cv::THRESH_TRUNC);
+    cv::normalize(normalized, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    
+    cv::GaussianBlur(normalized, imgBlur, cv::Size(5,5), 0, 0);
+
+    // SOBEL edge detection
+    cv::Mat sobelx, sobely, gradient;
+    cv::Sobel(imgBlur, sobelx, CV_64F, 1, 0, 3);
+    cv::Sobel(imgBlur, sobely, CV_64F, 0, 1, 3);
+    cv::magnitude(sobelx, sobely, gradient);
+    cv::Mat gradient_abs;
+    cv::convertScaleAbs(gradient, gradient_abs);  
+
+    // make max brightness
+    cv::normalize(gradient_abs, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+
+    cv::Mat thresh1;
+    cv::threshold(normalized, thresh1, 128, 255, cv::THRESH_TOZERO_INV);
+    cv::normalize(thresh1, thresh1, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    //cv::imshow("thresh1", thresh1);
+
+    cv::Mat edgesMask;
+    // cv::inRange(thresh1, 20, 200, edgesMask);
+    // // cv::imshow("edgesMask", edgesMask);
+    // cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_OPEN,
+    //                 cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5,5)));
+
+    // OTSU ALGO
+    int otsuthresh = cv::threshold(thresh1, edgesMask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU | cv::THRESH_DRYRUN);
+    cv::threshold(thresh1, edgesMask, otsuthresh * threshMultiplier, 255, cv::THRESH_BINARY);
+            cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_CLOSE,
+                         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7,7)));
+    //cv::imshow("otsuBin", edgesMask);
+
+    return edgesMask;
+}
+
+cv::Mat MorphGradDetection(cv::Mat & inputImg, int radius, int thr)
+{
+    cv::Mat imgBlur;
+    //cv::blur(imgGray, imgBlur, cv::Size(10,10));
+    cv::medianBlur(inputImg, imgBlur, 11);
+
+    cv::Mat normalized;
+    cv::normalize(imgBlur, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    cv::GaussianBlur(normalized, normalized, cv::Size(5, 5), 0);
+
+    cv::Mat se = cv::getStructuringElement(
+        cv::MORPH_ELLIPSE,
+        cv::Size(2 * 3 + 1, 2 * radius + 1)
+    );
+
+    cv::Mat grad;
+    cv::morphologyEx(normalized, grad, cv::MORPH_GRADIENT, se);
+    
+    cv::normalize(grad, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+
+    // // extract a range of brightness
+    // cv::Mat thresh;
+    // // cv::threshold(normalized, thresh, 75, 75, cv::THRESH_TOZERO_INV);
+    // cv::Mat normThresh;
+    // cv::normalize(thresh, normThresh, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    //cv::imshow("normalized morphgrad", normalized);
+
+    // cv::Mat edgeBin;
+    // if (thr > 0) 
+    // {
+    //     cv::threshold(normalized, edgeBin, thr, 255, cv::THRESH_BINARY);
+
+    //     // Optional cleanup: remove tiny specks and close small gaps
+    //     cv::morphologyEx(edgeBin, edgeBin, cv::MORPH_OPEN,
+    //                      cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3)));
+    //     cv::morphologyEx(edgeBin, edgeBin, cv::MORPH_CLOSE,
+    //                      cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3)));
+    // }
+
+    // get rid of "halo" and noisy lines
+    // cv::Mat edgesMask;
+    // cv::inRange(normalized, 0, 200, edgesMask);
+
+
+    return normalized;
+}
+
+std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultiplier)
+{
+    cv::Mat imgGray;
+    cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
+
+    // normalize to brightness
+    cv::Mat edgesMask; 
+    edgesMask = SobelFilter(imgGray, threshMultiplier);
+    //cv::imshow("sobel result", edgesMask);
+
+    // edgesMask = MorphGradDetection(imgGray, 5, 20);
+    // cv::imshow("morph grad result 5", edgesMask);
+
+    // THINNING
+    cv::Mat thinEdges;
+    cv::ximgproc::thinning(edgesMask, thinEdges, cv::ximgproc::THINNING_ZHANGSUEN);
+    //cv::imshow("contoured", thinEdges);
+    
+    cv::Mat finalEdges = pruneSpurs(thinEdges);
+    // TRACING
+    std::vector<std::vector<cv::Point>> traced;
+    cv::findContours(finalEdges, traced, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    std::sort(traced.begin(), traced.end(),
+            [](auto &a, auto &b)
+            { 
+            return a.size() > b.size(); 
+            }
+    );
+    
+    cv::Mat tracedImg = img.clone();
+    for (size_t i = 0; i < traced.size(); ++i)
+    {
+        if (traced[i].size() < 100)
+        {
+            continue;
+        }
+        cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+    }
+    //cv::imshow("traced lamp", tracedImg);
+
+    return traced;
+}
+
 bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
 {
     bool success = true;
@@ -139,76 +274,8 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
     {
         cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
 
-        cv::Mat imgGray;
-        cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
-        
-        cv::Mat imgBlur;
-        cv::blur(imgGray, imgBlur, cv::Size(10,10));
-        //cv:imshow("blur", imgBlur);
-
-        // basically increases contrast and brightness
-        cv::Mat normalized;
-        cv::normalize(imgBlur, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-
-        // SOBEL edge detection
-        cv::Mat sobelx, sobely, gradient;
-        cv::Sobel(normalized, sobelx, CV_64F, 1, 0, 3);
-        cv::Sobel(normalized, sobely, CV_64F, 0, 1, 3);
-        cv::magnitude(sobelx, sobely, gradient);
-        cv::Mat gradient_abs;
-        cv::convertScaleAbs(gradient, gradient_abs);  
-
-        // make max brightness
-        cv::normalize(gradient_abs, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-        // cv::imshow("normalized", normalized);
-
-        // extract a range of brightness
-        cv::Mat thresh;
-        cv::threshold(normalized, thresh, 20, 255, cv::THRESH_TOZERO);
-        cv::threshold(thresh, thresh, 100, 100, cv::THRESH_TOZERO_INV);
-        cv::blur(thresh, thresh, cv::Size(5,5));
-        cv::imshow("thresh1", thresh);
-
-        // normalize again
-        cv::Mat normThresh;
-        cv::normalize(thresh, normThresh, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-        //cv::imshow("normalized2", thresh);
-
-        // get rid of "halo" and noisy lines
-        cv::Mat edgesMask;
-        cv::inRange(normThresh, 25, 200, edgesMask);
-        //cv::imshow("edgesMask", edgesMask);
-
-        // connect gaps
-        cv::dilate(edgesMask, edgesMask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5,3)));
-        cv::blur(edgesMask, edgesMask, cv::Size(5,5));
-        //cv::imshow("edges mask blurred", edgesMask);
-
-        // THINNING
-        cv::Mat thinEdges;
-        cv::ximgproc::thinning(edgesMask, thinEdges, cv::ximgproc::THINNING_ZHANGSUEN);
-        cv::imshow("contoured", thinEdges);
-        
-        cv::Mat finalEdges = pruneSpurs(thinEdges);
-        // TRACING
-        std::vector<std::vector<cv::Point>> traced;
-        cv::findContours(finalEdges, traced, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-        std::sort(traced.begin(), traced.end(),
-              [](auto &a, auto &b)
-              { 
-                return a.size() > b.size(); 
-              }
-            );
-        
-        cv::Mat tracedImg = img.clone();
-        for (size_t i = 0; i < traced.size(); ++i)
-        {
-            cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
-        }
-        cv::imshow("traced lamp", tracedImg);
-
         this->contours.clear();
-        this->contours = traced;
+        this->contours = GetContours(img, sobelThreshMultiplierDefault);
 
         if (this->contours.size() < 4)
         {
@@ -227,7 +294,37 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
             if (success)
             {
                 success = this->SimplifyLampContours();
+                
+                // retry!
+                if (!success)
+                {
+                    double threshMultipliers[] = 
+                    {
+                        sobelThreshMultiplierDefault - 0.1,
+                        sobelThreshMultiplierDefault - 0.15,
+                        sobelThreshMultiplierDefault - 0.2,
+                        sobelThreshMultiplierDefault - 0.25,
+                        sobelThreshMultiplierDefault - 0.3,
+                        sobelThreshMultiplierDefault - 0.35,
+                        sobelThreshMultiplierDefault - 0.4
 
+                    };
+                    size_t tries = sizeof(threshMultipliers)/sizeof(double) - 1;
+                    
+                    int indexMultiplier = 0;
+                    for (int i = 0; i < tries; ++i)
+                    {
+                        this->contours = GetContours(img, threshMultipliers[indexMultiplier]);
+                        success = this->SimplifyLampContours();
+                        qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
+                        if ( success || indexMultiplier == tries)
+                        {
+                            break;
+                        }
+                        indexMultiplier ++;
+                    }
+                }
+                
                 if (success)
                 {
                     std::vector<float> radii;
@@ -249,6 +346,10 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
                     
                     //emit ImageProcessed(this->currentImageCv);
                     // emit LampWallsProcessed(centers, radiiMm, lampWalls);
+                }
+                else
+                {
+
                 }
             }
         }
@@ -671,7 +772,7 @@ void DivideLongContours(const std::vector<std::vector<cv::Point>>& input, std::v
 std::vector<std::vector<cv::Point>> RemoveSimilarContours
 (
     const std::vector<std::vector<cv::Point>>& contours,
-    double distanceTolerance = 20.0
+    double distanceTolerance = 30.0
 )
 {
     std::vector<std::vector<cv::Point>> curves = contours;
@@ -775,42 +876,33 @@ bool LampImageAnalyser::SimplifyLampContours()
         //DivideLongContours(this->contours, segments);
 
         // cut points far from center (easier than divide into monotonous parts at extrema)
-        CutCloseToCenter(this->contours, segments, this->lamp.lampCenter.y, 3*this->lamp.pixelMmRatio);
-
-        int i = 0;
-        // for (auto segment : segments)
-        // {
-        //     cv::polylines(trueContoured, segment, false, colours[i]);
-
-        //     i++;
-        // }
-        // cv::imshow("divided contours", trueContoured);
+        CutCloseToCenter(this->contours, segments, this->lamp.lampCenter.y, 2.5*this->lamp.pixelMmRatio);
 
         // remove duplicates
         cv::Mat cleacned = this->currentImageCv->clone();
         std::vector<std::vector<cv::Point>> segmentsCleaned;
         segmentsCleaned = RemoveSimilarContours(segments);
 
-        // i = 0;
-        // for (auto segment : segmentsCleaned)
-        // {
-        //     cv::polylines(cleacned, segment, false, colours[i]);
-        //     cv::putText(cleacned, 
-        //         cv::String(std::to_string(i)), 
-        //         segment[0],
-        //         cv::FONT_HERSHEY_SIMPLEX,
-        //         0.5,
-        //         colours[i]
-        //     );
-        //     i++;
-        // }
-        // cv::imshow("cleaned contours", cleacned);
+        int i = 0;
+        for (auto segment : segmentsCleaned)
+        {
+            cv::polylines(cleacned, segment, false, colours[i]);
+            cv::putText(cleacned, 
+                cv::String(std::to_string(i)), 
+                segment[0],
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.5,
+                colours[i]
+            );
+            i++;
+        }
+        //cv::imshow("cleaned contours", cleacned);
 
         for (size_t i = 0; i < segmentsCleaned.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
             // TODO: better method?
-            if (segmentsCleaned[i].size() < 100)
+            if (segmentsCleaned[i].size() < 50)
             {  
                 continue;
             }
@@ -818,9 +910,9 @@ bool LampImageAnalyser::SimplifyLampContours()
             std::vector<cv::Point> contour = segmentsCleaned[i];
             cv::polylines(trueContoured, contour, false, colours[i]);
             
-            // std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
-            //     return a.y < b.y;
-            // });
+            std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
+                return a.y < b.y;
+            });
             
             OpeningResult r = detectOpeningLR(contour);
             Orientation orient = (r.opening == OpeningLR::Left ? Orientation::LEFT :
@@ -852,7 +944,7 @@ bool LampImageAnalyser::SimplifyLampContours()
             trueContours.push_back(contour);
             cv::polylines(trueContoured, contour, false, colours[i]);
         }
-        cv::imshow("raw contours", trueContoured);
+        //cv::imshow("sorted contours", trueContoured);
 
         // find pixel to mm ratio from lamp width
         this->lamp.lampWidth = std::abs((rightmostApexX - leftmostApexX)) / this->lamp.pixelMmRatio;
@@ -907,8 +999,11 @@ bool LampImageAnalyser::SimplifyLampContours()
                     }
                 }
             }
-            std::vector<cv::Point> simple(trueContours[i].begin() + bestIdx_up, trueContours[i].begin() + bestIdx_down);
-            simples.push_back(simple);
+            if (bestIdx_down > bestIdx_up)
+            {
+                std::vector<cv::Point> simple(trueContours[i].begin() + bestIdx_up, trueContours[i].begin() + bestIdx_down);
+                simples.push_back(simple);
+            }
         }
 
         if (simples.size() != 4)
