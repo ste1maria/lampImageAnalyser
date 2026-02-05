@@ -15,6 +15,13 @@ typedef enum
     APEX_ERR_FAULTY_CONTOUR
 } ApexSanityResult;
 
+typedef enum 
+{
+    XRAY,
+    PHOTO
+}
+ImageType;
+
 class LampImageAnalyser : public QObject
 {
     Q_OBJECT
@@ -38,6 +45,7 @@ public:
     
     QPair<float, float> CalculateDistanceAngle(cv::Point start, cv::Point end);
     QPair<float, float> CalculateDistanceAngle(QPointF start, QPointF end);
+    void SetImageType(ImageType type);
 
 signals:
     void ImageProcessed(std::shared_ptr<cv::Mat> img);
@@ -101,6 +109,8 @@ private:
     };
 
     const double standardLampWidth_mm = 7.00;
+
+    ImageType imageType = ImageType::XRAY;
 
     std::vector<std::vector<cv::Point>> contours;
     double sobelThreshMultiplierDefault = 1;

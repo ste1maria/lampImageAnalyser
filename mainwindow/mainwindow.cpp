@@ -34,6 +34,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->labelLampResults->clear();
     ui->labelElectrodesResults->clear();
     ui->lineEditSerial->setText(this->serialNumberDefault);
+    ui->radioButtonXray->setChecked(true);
+    this->imgProcessor->SetImageType(ImageType::XRAY);
 
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
     connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
@@ -42,6 +44,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->pushButtonSaveResults, &QPushButton::clicked, this, &MainWindow::SaveResults);
     connect(ui->pushButtonSaveContours, &QPushButton::clicked, this, &MainWindow::SaveContours);
     connect(ui->pushButtonBatch, &QPushButton::clicked, this, &MainWindow::BatchProcessFolder);
+    connect(ui->radioButtonPhoto, &QRadioButton::toggled, this, &MainWindow::ChangeImageType);
 
     connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
@@ -253,5 +256,17 @@ void MainWindow::BatchProcessFolder()
 
         }
 
+    }
+}
+
+void MainWindow::ChangeImageType()
+{
+    if (ui->radioButtonPhoto->isChecked())
+    {
+        this->imgProcessor->SetImageType(ImageType::PHOTO);
+    }
+    else if (ui->radioButtonXray->isChecked())
+    {
+        this->imgProcessor->SetImageType(ImageType::XRAY);
     }
 }

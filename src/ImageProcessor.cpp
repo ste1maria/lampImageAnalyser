@@ -1,7 +1,6 @@
 #include "ImageProcessor.h"
 #include <QMessageBox>
 #include <QFileDialog>
-#include "LampImageAnalyser.h"
 #include <QDebug>
 #include <cmath>
 #include "mainwindow.h"
@@ -53,6 +52,10 @@ bool ImageProcessor::UploadImage(QString fileName)
     {
         emit AnalysisFailed(AnalysisFailure::FAILURE_IMG_TOO_SMALL);
         success = false;
+    }
+    else if (image.height() > 1200 && image.width() > 1920)
+    {
+        image = image.scaled(QSize(1920, 1200), Qt::KeepAspectRatio);
     }
     this->currentImage = image.convertToFormat(QImage::Format_BGR888);
     this->originalImage = currentImage.copy();
@@ -232,4 +235,9 @@ void ImageProcessor::ResetManualSelection()
 {
     this->ResetImage();
     this->visualization->SetImageClickable(false);
+}
+
+void ImageProcessor::SetImageType(ImageType type)
+{
+    this->analyser->SetImageType(type);
 }

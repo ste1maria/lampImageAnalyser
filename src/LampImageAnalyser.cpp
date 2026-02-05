@@ -1638,48 +1638,50 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
     // TRACING
     cv::Mat toTrace = img.clone();
-    std::vector<std::vector<cv::Point>> electrodesTemp;
 
-    cv::Ptr<cv::ximgproc::FastLineDetector> fld =
-        cv::ximgproc::createFastLineDetector(/*length_threshold=*/40,
-                                            /*distance_threshold=*/1.4142,
-                                            /*canny_th1=*/25, /*canny_th2=*/75,
-                                            /*aperture=*/3, /*do_merge=*/true);
+    std::vector<std::vector<cv::Point>> electrodes;
 
-    std::vector<cv::Vec4f> lines;
-    fld->detect(imgGray, lines);
-
-    std::vector<std::vector<cv::Point>> segments;
-    for (const auto& l : lines) 
+    if (imageType == ImageType::XRAY)
     {
-        segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
-                            cv::Point(cvRound(l[2]), cvRound(l[3])) });
+        cv::Ptr<cv::ximgproc::FastLineDetector> fld =
+            cv::ximgproc::createFastLineDetector(/*length_threshold=*/40,
+                                                /*distance_threshold=*/1.4142,
+                                                /*canny_th1=*/25, /*canny_th2=*/75,
+                                                /*aperture=*/3, /*do_merge=*/true);
+
+        std::vector<cv::Vec4f> lines;
+        fld->detect(imgGray, lines);
+
+        std::vector<std::vector<cv::Point>> segments;
+        for (const auto& l : lines) 
+        {
+            segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
+                                cv::Point(cvRound(l[2]), cvRound(l[3])) });
+        }
+
+        for (auto poly : segments)
+        {
+            cv::polylines(toTrace, poly, 0, colours[1]);
+        }
+
+        //cv::imshow("raw", toTrace);
+        // join broken contours
+        this->lamp.electrodes.clear();
+        JoinSegmentsRecursive(segments, electrodes);
+        // int i = 0;
+        // for (auto poly : electrodesJoint)
+        // {
+        //     cv::polylines(toTrace, poly, 0, colours[i]);
+        //     i++;
+        // }
+        // cv::imshow("joint", toTrace);
     }
-
-    // for (auto poly : segments)
-    // {
-    //     cv::polylines(toTrace, poly, 0, colours[1]);
-    // }
-
-    // cv::imshow("raw", toTrace);
-    // join broken contours
-    this->lamp.electrodes.clear();
-    std::vector<std::vector<cv::Point>> electrodesJoint;
-    JoinSegmentsRecursive(segments, electrodesJoint);
-
-    // int i = 0;
-    // for (auto poly : electrodesJoint)
-    // {
-    //     cv::polylines(toTrace, poly, 0, colours[i]);
-    //     i++;
-    // }
-    // cv::imshow("joint", toTrace);
 
     // find vertices
     std::vector<cv::Point> apexesVect;
     ApexSanityResult apexError = ApexSanityResult::APEX_OK;
 
-    for (auto electrode : electrodesJoint)
+    for (auto electrode : electrodes)
     {
         if (electrode.size() <= 2)
         {
@@ -1881,4 +1883,9 @@ QString LampImageAnalyser::GetContoursTable()
 
     }
     return table;
+}
+
+void LampImageAnalyser::SetImageType(ImageType type)
+{
+    this->imageType = type;
 }
