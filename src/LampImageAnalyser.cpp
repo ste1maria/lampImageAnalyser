@@ -157,10 +157,6 @@ cv::Mat SobelFilter(cv::Mat& inputImg, double threshMultiplier)
     //cv::imshow("thresh1", thresh1);
 
     cv::Mat edgesMask;
-    // cv::inRange(thresh1, 20, 200, edgesMask);
-    // // cv::imshow("edgesMask", edgesMask);
-    // cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_OPEN,
-    //                 cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5,5)));
 
     // OTSU ALGO
     int otsuthresh = cv::threshold(thresh1, edgesMask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU | cv::THRESH_DRYRUN);
@@ -296,34 +292,34 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
                 success = this->SimplifyLampContours();
                 
                 // retry!
-                if (!success)
-                {
-                    double threshMultipliers[] = 
-                    {
-                        sobelThreshMultiplierDefault - 0.1,
-                        sobelThreshMultiplierDefault - 0.15,
-                        sobelThreshMultiplierDefault - 0.2,
-                        sobelThreshMultiplierDefault - 0.25,
-                        sobelThreshMultiplierDefault - 0.3,
-                        sobelThreshMultiplierDefault - 0.35,
-                        sobelThreshMultiplierDefault - 0.4
+            //     if (!success)
+            //     {
+            //         double threshMultipliers[] = 
+            //         {
+            //             sobelThreshMultiplierDefault - 0.1,
+            //             sobelThreshMultiplierDefault - 0.15,
+            //             sobelThreshMultiplierDefault - 0.2,
+            //             sobelThreshMultiplierDefault - 0.25,
+            //             sobelThreshMultiplierDefault - 0.3,
+            //             sobelThreshMultiplierDefault - 0.35,
+            //             sobelThreshMultiplierDefault - 0.4
 
-                    };
-                    size_t tries = sizeof(threshMultipliers)/sizeof(double) - 1;
+            //         };
+            //         size_t tries = sizeof(threshMultipliers)/sizeof(double) - 1;
                     
-                    int indexMultiplier = 0;
-                    for (int i = 0; i < tries; ++i)
-                    {
-                        this->contours = GetContours(img, threshMultipliers[indexMultiplier]);
-                        success = this->SimplifyLampContours();
-                        qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
-                        if ( success || indexMultiplier == tries)
-                        {
-                            break;
-                        }
-                        indexMultiplier ++;
-                    }
-                }
+            //         int indexMultiplier = 0;
+            //         for (int i = 0; i < tries; ++i)
+            //         {
+            //             this->contours = GetContours(img, threshMultipliers[indexMultiplier]);
+            //             success = this->SimplifyLampContours();
+            //             qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
+            //             if ( success || indexMultiplier == tries)
+            //             {
+            //                 break;
+            //             }
+            //             indexMultiplier ++;
+            //         }
+            //    }
                 
                 if (success)
                 {
@@ -513,15 +509,21 @@ typedef enum
 {
     RIGHT,
     LEFT,
+    UP,
+    DOWN,
     AMBIG
 } Orientation;
 
 // to find the curve apex
-int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int lampCenterY)
+int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, cv::Point lampCenter)
 {
     // apex at max or min x and approximately at lampCenterY
     int max_x = 0;
-    int min_x = 10000;
+    int min_x = 10000;    
+
+    int max_y = 0;
+    int min_y = 10000;
+
     int apexIndex = 0;
     int minDiff = centerApproxTolerance;
 
@@ -531,7 +533,17 @@ int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int la
     }
     for (size_t i = 0; i < curve.size(); i++)
     {
-        int diff = std::abs(lampCenterY - curve[i].y);
+        int diff;
+        if ((orientation == Orientation::RIGHT) || (orientation == Orientation::LEFT)) 
+        {
+            diff = std::abs(lampCenter.y - curve[i].y);
+        }
+        else 
+        {
+
+        }
+        diff = std::abs(lampCenter.x - curve[i].x);
+
         if (diff <= minDiff)
         {
             if (orientation == Orientation::RIGHT)
@@ -550,71 +562,26 @@ int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, int la
                     apexIndex = i;
                 }
             }
+            else if (orientation == Orientation::UP)
+            {
+                if (curve[i].y <= min_y)
+                {
+                    min_y = curve[i].y;
+                    apexIndex = i;
+                }
+            }
+            else if (orientation == Orientation::DOWN)
+            {
+                if (curve[i].y >= max_y)
+                {
+                    max_y = curve[i].y;
+                    apexIndex = i;
+                }
+            }
         }
     }
     return apexIndex;
 }
-
-// void LampImageAnalyser::FindPixelMmRatio(int lampWidthPx)
-// {
-//     this->lamp.pixelMmRatio = lampWidthPx / standardLampWidth_mm;
-//     qDebug() << "width" << lampWidthPx;
-// }
-
-// double CalculateMeanXAxis(const std::vector<cv::Point>* data)
-// {
-//     size_t size = data->size();
-//     if (size == 0)
-//     {
-//         return 0;
-//     }
-
-//     double sum = 0;
-
-//     for (auto point : *data)
-//     {
-//         sum += point.x;
-//     }
-
-//     return sum / size;
-// }
-
-// double CalcStdDevXAxis(const std::vector<cv::Point>* data)
-// {
-//     size_t size = data->size();
-//     if (size == 0)
-//     {
-//         return 0;
-//     }
-    
-//     double mean = CalculateMeanXAxis(data);
-
-//     double sumSquaredDiff = 0;
-
-//     for (cv::Point point : *data)
-//     {
-//         sumSquaredDiff += std::pow(point.x - mean, 2);
-//     }
-
-//     return std::sqrt(sumSquaredDiff / size);
-// }
-
-// void RemoveOutliersXAxis(const std::vector<cv::Point>* input, std::vector<cv::Point>* output)
-// {
-//     double stdDev = CalcStdDevXAxis(input);
-//     double mean = CalculateMeanXAxis(input);
-
-//     std::vector<cv::Point> result;
-
-//     for (cv::Point point : *input)
-//     {
-//         if (std::abs((point.x - mean) / stdDev) < 3)
-//         {
-//             result.push_back(point);
-//         }
-//     }
-//     *output = result;
-// }
 
 static int sign(double v, double eps = 1)
 {
@@ -634,21 +601,31 @@ void CutCloseToCenter
 (
     const std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>> &output, 
-    int center, 
+    cv::Point center, 
     int allowedDistance
 )
 {
     std::vector<std::vector<cv::Point>> divided;
+    bool isVertical = false;
 
     for (auto contour : input)
     {
+
+        int verticalDiff = FindMinMaxPoint(contour, true, false).y - FindMinMaxPoint(contour, false, false).y;
+        int horizontalDiff = FindMinMaxPoint(contour, true, true).x - FindMinMaxPoint(contour, false, true).x;
+        if (horizontalDiff < verticalDiff)
+        {
+            isVertical = true;
+        }
+
         bool aboveLimit = false;
         size_t pieceStart = 0;
         size_t skipStart  = 0;  
 
         for (int i = 0; i < contour.size(); ++i)
         {
-            bool isOutside = std::abs(contour[i].y - center) > allowedDistance;
+            int distance = isVertical ? contour[i].y - center.y: contour[i].x - center.x;
+            bool isOutside = std::abs(distance) > allowedDistance;
             if (!aboveLimit && isOutside)
             {
                 // split here
@@ -781,9 +758,6 @@ std::vector<std::vector<cv::Point>> RemoveSimilarContours
     
     for (size_t i = 0; i < curves.size(); ++i)
     {
-        std::sort(curves[i].begin(), curves[i].end(), [](const cv::Point& a, const cv::Point& b) {
-            return a.y < b.y;
-        });
         std::vector<cv::Point> approx;
         double epsilon = 4.0; // Adjust for more/less smoothing
         cv::approxPolyDP(curves[i], approx, epsilon, false);
@@ -868,89 +842,104 @@ bool LampImageAnalyser::SimplifyLampContours()
     {
         std::vector<std::vector<cv::Point>> simples;
         std::vector<std::vector<cv::Point>> trueContours;
-        int leftmostApexX(0), rightmostApexX(0);
+        int startApex(0), endApex(0);
 
         std::vector<std::vector<cv::Point>> segments;
 
+        bool isVertical = false;
         // split contours into monotonous segments
         //DivideLongContours(this->contours, segments);
 
         // cut points far from center (easier than divide into monotonous parts at extrema)
-        CutCloseToCenter(this->contours, segments, this->lamp.lampCenter.y, 2.5*this->lamp.pixelMmRatio);
+        CutCloseToCenter(this->contours, segments, this->lamp.lampCenter, 2.5*this->lamp.pixelMmRatio);
 
-        // remove duplicates
-        cv::Mat cleacned = this->currentImageCv->clone();
-        std::vector<std::vector<cv::Point>> segmentsCleaned;
-        segmentsCleaned = RemoveSimilarContours(segments);
-
-        int i = 0;
-        for (auto segment : segmentsCleaned)
-        {
-            cv::polylines(cleacned, segment, false, colours[i]);
-            cv::putText(cleacned, 
-                cv::String(std::to_string(i)), 
-                segment[0],
-                cv::FONT_HERSHEY_SIMPLEX,
-                0.5,
-                colours[i]
-            );
-            i++;
-        }
-        //cv::imshow("cleaned contours", cleacned);
-
-        for (size_t i = 0; i < segmentsCleaned.size(); i++)
+        for (size_t i = 0; i < segments.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
             // TODO: better method?
-            if (segmentsCleaned[i].size() < 50)
+            if (segments[i].size() < 100)
             {  
                 continue;
             }
             
-            std::vector<cv::Point> contour = segmentsCleaned[i];
-            cv::polylines(trueContoured, contour, false, colours[i]);
-            
-            std::sort(contour.begin(), contour.end(), [](const cv::Point& a, const cv::Point& b) {
-                return a.y < b.y;
+            std::vector<cv::Point> contour = segments[i];
+
+            int verticalDiff = FindMinMaxPoint(contour, true, false).y - FindMinMaxPoint(contour, false, false).y;
+            int horizontalDiff = FindMinMaxPoint(contour, true, true).x - FindMinMaxPoint(contour, false, true).x;
+            if (horizontalDiff < verticalDiff)
+            {
+                isVertical = true;
+            }
+
+            std::sort(contour.begin(), contour.end(), [isVertical](const cv::Point& a, const cv::Point& b) {
+                return (isVertical ? a.y < b.y : a.x < b.x);
             });
             
-            OpeningResult r = detectOpeningLR(contour);
-            Orientation orient = (r.opening == OpeningLR::Left ? Orientation::LEFT :
-                                    r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
+            Orientation orient;
+
+            if (isVertical)
+            { 
+                OpeningResult r;
+                r = detectOpeningLR(contour);
+                orient = (r.opening == OpeningLR::Left ? Orientation::LEFT :
+                                        r.opening == OpeningLR::Right ? Orientation::RIGHT : Orientation::AMBIG);
+            }
+            else
+            {
+                OpeningResultUD r;
+                r = detectOpeningUD(contour);
+                orient = (r.opening == OpeningUD::Up ? Orientation::UP :
+                                        r.opening == OpeningUD::Down ? Orientation::DOWN : Orientation::AMBIG);
+            }
 
             if (orient == Orientation::AMBIG)
             {
                 continue;
             }
 
-            int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter.y);
+            int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter);
             
             this->lamp.wallsApexes.push_back(contour[apexIdx]);
 
-            if (leftmostApexX == 0 && rightmostApexX == 0)
+            if (startApex == 0 && endApex == 0)
             {
-                leftmostApexX = contour[apexIdx].x;
-                rightmostApexX = contour[apexIdx].x;
+                startApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
+                endApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
             }
-            else if (contour[apexIdx].x < leftmostApexX)
+            else if (contour[apexIdx].x < startApex)
             {
-                leftmostApexX = contour[apexIdx].x;
+                startApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
             }
-            else if (contour[apexIdx].x > rightmostApexX)
+            else if (contour[apexIdx].x > endApex)
             {
-                rightmostApexX = contour[apexIdx].x;
+                endApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
             }
 
             trueContours.push_back(contour);
-            cv::polylines(trueContoured, contour, false, colours[i]);
         }
+        //remove duplicates
+        std::vector<std::vector<cv::Point>> segmentsCleaned;
+        segmentsCleaned = RemoveSimilarContours(trueContours);
+        // int i = 0;
+        // for (auto segment : segmentsCleaned)
+        // {
+        //     cv::polylines(trueContoured, segment, false, colours[i]);
+        //     cv::putText(trueContoured, 
+        //         cv::String(std::to_string(i)), 
+        //         segment[0],
+        //         cv::FONT_HERSHEY_SIMPLEX,
+        //         0.5,
+        //         colours[i]
+        //     );
+        //     i++;
+        // }
         //cv::imshow("sorted contours", trueContoured);
 
-        // find pixel to mm ratio from lamp width
-        this->lamp.lampWidth = std::abs((rightmostApexX - leftmostApexX)) / this->lamp.pixelMmRatio;
-        int pixels2mm = 2 * this->lamp.pixelMmRatio;
+        trueContours = segmentsCleaned;
 
-        int lampCenterY = this->lamp.lampCenter.y;
+        // find pixel to mm ratio from lamp width
+        this->lamp.lampWidth = std::abs((startApex - endApex)) / this->lamp.pixelMmRatio;
+        int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
         for (size_t i = 0; i < trueContours.size(); i++)
         {
@@ -959,7 +948,9 @@ bool LampImageAnalyser::SimplifyLampContours()
             unsigned bestAbsCenter(centerApproxTolerance), bestIdxCenter(0);
             for (size_t j = 0; j < trueContours[i].size(); ++j)
             {
-                int diffCenter = std::abs(trueContours[i][j].y - lampCenterY);
+                int diffCenter = isVertical ? std::abs(trueContours[i][j].y - this->lamp.lampCenter.y)
+                                            : std::abs(trueContours[i][j].x - this->lamp.lampCenter.x);
+
                 if (diffCenter < bestAbsCenter)
                 {
                     bestAbsCenter = diffCenter;
@@ -971,9 +962,11 @@ bool LampImageAnalyser::SimplifyLampContours()
                 continue;
             }
             
-            // go up and down 2 mm from the center
+            // go up and down 2 mm from the center (or left and right)
             int y_up = trueContours[i][indexCenter].y - pixels2mm;
             int y_down = trueContours[i][indexCenter].y + pixels2mm;
+            int xLeft = trueContours[i][indexCenter].x - pixels2mm;
+            int xRight = trueContours[i][indexCenter].x + pixels2mm;
 
             unsigned bestIdx_up(0), bestIdx_down(0);
             unsigned bestAbs_up(10), bestAbs_down(10);// maximum tolerance to Y difference
@@ -982,7 +975,8 @@ bool LampImageAnalyser::SimplifyLampContours()
             {
                 if (j <= indexCenter)
                 {
-                    int d_up = std::abs(trueContours[i][j].y - y_up);
+                    int d_up = isVertical ? std::abs(trueContours[i][j].y - y_up) 
+                                            : std::abs(trueContours[i][j].x - xLeft) ;
                     if (d_up < bestAbs_up)
                     {
                         bestAbs_up = d_up;
@@ -991,7 +985,9 @@ bool LampImageAnalyser::SimplifyLampContours()
                 }
                 else
                 {
-                    int d_down = std::abs(trueContours[i][j].y - y_down);
+                    int d_down = isVertical ? std::abs(trueContours[i][j].y - y_down)
+                                                : std::abs(trueContours[i][j].x - xRight) ;
+
                     if (d_down < bestAbs_down)
                     {
                         bestAbs_down = d_down;
@@ -1019,7 +1015,7 @@ bool LampImageAnalyser::SimplifyLampContours()
             {
                 cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
             }
-            //cv::imshow("lamp contours", drawn);
+            // cv::imshow("lamp contours", drawn);
             *this->currentImageCv = std::move(drawn);
         }
         
@@ -1241,33 +1237,12 @@ double angleBetween(const cv::Point2f& v1, const cv::Point2f& v2) {
     return angle * 180.0 / CV_PI;        // degrees
 }
 
-cv::Point FindMinMaxPoint(const std::vector<cv::Point> & vector, bool isMax, bool isX)
-{
-    cv::Point result;
-    std::vector<cv::Point>::const_iterator it;
-    if (isMax)
-    {
-        it = std::max_element(vector.begin(), vector.end(),
-            [isX](const cv::Point& a, const cv::Point& b) {
-                return isX ? (a.x < b.x) : (a.y < b.y);
-            });
-    }
-    else 
-    {
-        it = std::min_element(vector.begin(), vector.end(),
-            [isX](const cv::Point& a, const cv::Point& b) {
-                return isX ? (a.x < b.x) : (a.y < b.y);
-            });
-    }
-    result = *it;
-    return result;
-}
-
 ApexSanityResult ApexSanityCheck
 (
     const std::vector<cv::Point> &shape,
     cv::Point apex, 
-    int imgHeight
+    int imgHeight,
+    int imgWidth
 )
 {
     ApexSanityResult result = ApexSanityResult::APEX_OK;
@@ -1277,22 +1252,39 @@ ApexSanityResult ApexSanityCheck
         return APEX_ERR_EMPTY_VECTOR;
     }
 
+    bool isVertical = false;
+    int verticalDiff = FindMinMaxPoint(shape, true, false).y - FindMinMaxPoint(shape, false, false).y;
+    int horizontalDiff = FindMinMaxPoint(shape, true, true).x - FindMinMaxPoint(shape, false, true).x;
+    if (horizontalDiff < verticalDiff)
+    {
+        isVertical = true;
+    }
+
     // determine orientation
 
     double dy = static_cast<double>(apex.y) - static_cast<double>(shape.front().y);
-    if (dy == 0)
+    double dx = static_cast<double>(apex.x) - static_cast<double>(shape.front().x);
+    if (dy == 0 && isVertical)
     {
         dy = static_cast<double>(apex.y) - static_cast<double>(shape.back().y);
     }
-    if (dy == 0)
+    if (dx == 0 && !isVertical)
+    {
+        dx = static_cast<double>(apex.x) - static_cast<double>(shape.back().x);
+    }
+
+    if ((dy == 0 && isVertical) || (dx == 0 && !isVertical))
     {
         return APEX_ERR_FAULTY_CONTOUR;
     }
 
-    auto findMinMaxYAtX = [](const std::vector<cv::Point>& pts, int x, bool isUpright) -> std::optional<cv::Point> {
+    auto findMinMaxYAtX = [](const std::vector<cv::Point>& pts, int x, bool isUpright) -> std::optional<cv::Point> 
+    {
         std::optional<cv::Point> best;
-        for (const auto& p : pts) {
-            if (p.x == x) {
+        for (const auto& p : pts)
+        {
+            if (p.x == x) 
+            {
                 if ((isUpright && (!best || p.y > best->y)) // base has larger Y coordinates, almost max
                 || (!isUpright && (!best || p.y < best->y))) // base has smaller Y coordinates, almost 0
                 {
@@ -1303,17 +1295,48 @@ ApexSanityResult ApexSanityCheck
         return best; // empty if no point with that x found
     };
 
+    auto findMinMaxXAtY = [](const std::vector<cv::Point>& pts, int y, bool isLeftToRight) -> std::optional<cv::Point> 
+    {
+        std::optional<cv::Point> best;
+        for (const auto& p : pts) 
+        {
+            if (p.y == y) 
+            {
+                if ((!isLeftToRight && (!best || p.x > best->x)) // base has larger X coordinates, almost max
+                || (isLeftToRight && (!best || p.x < best->x))) // base has smaller X coordinates, almost 0
+                {
+                    best = p;
+                }
+            }
+        }
+        return best; // empty if no point with that x found
+    };
+
     // really hard to find the base vertices
     int left_x, right_x;
-    left_x = FindMinMaxPoint(shape, false, true).x;
-    right_x = FindMinMaxPoint(shape, true, true).x;
+    int up_y, down_y;
+    if (isVertical)
+    {
+        left_x = FindMinMaxPoint(shape, false, true).x;
+        right_x = FindMinMaxPoint(shape, true, true).x;
+    }
+    else
+    {
+        up_y = FindMinMaxPoint(shape, false, false).y;
+        down_y = FindMinMaxPoint(shape, true, false).y;
+    }
 
     bool isShapeUpright = dy > 0 ? false : true;
+    bool isLeftToRight = dx > 0 ? true : false;
+    
     cv::Point left = cv::Point(left_x, findMinMaxYAtX(shape, left_x, isShapeUpright)->y);
     cv::Point right = cv::Point(right_x, findMinMaxYAtX(shape, right_x, isShapeUpright)->y);
 
+    cv::Point up = cv::Point(findMinMaxXAtY(shape, up_y, isLeftToRight)->x, up_y);
+    cv::Point down = cv::Point(findMinMaxXAtY(shape, down_y, isLeftToRight)->x, down_y);
+
     // Base is wide enough?
-    cv::Point QR = right - left;
+    cv::Point QR = isVertical ? (right - left) : (up - down);
     double L2 = QR.dot(QR);
     if (L2 <= 10) // i know, magic number... 10 pix is actually too thin, baby
     {
@@ -1323,37 +1346,58 @@ ApexSanityResult ApexSanityCheck
     if (result == ApexSanityResult::APEX_OK)
     {
         // apex projects on X axis on the base line?
-        if (((apex.x < right.x) && (apex.x < left.x))
-            || ((apex.x > right.x) && (apex.x > left.x)))
+        if (isVertical)
         {
-            result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
+            if (((apex.x < right.x) && (apex.x < left.x))
+                || ((apex.x > right.x) && (apex.x > left.x)))
+            {
+                result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
+            }
+        }
+        else
+        {
+            if (((apex.y < down.y) && (apex.y < up.y))
+                || ((apex.y > down.y) && (apex.y > up.y)))
+            {
+                result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
+            }
         }
 
          if (result == ApexSanityResult::APEX_OK)
         {
             // determine the extremum - the actual apex
             cv::Point extremum;
-            if (dy > 0) // apex lower than "leg" => apex at the max y of the vector, electrode upside down
+            if (isVertical && dy > 0 || !isVertical && dx > 0) 
             {
                 auto it = std::max_element(shape.begin(), shape.end(),
-                            [](const cv::Point& a, const cv::Point& b) {
-                                return a.y < b.y;   // compare by Y coordinate
+                            [isVertical](const cv::Point& a, const cv::Point& b) {
+                                return (isVertical ? a.y < b.y : a.x < b.x);
                             });
                 extremum = *it;
             }
-            else if (dy < 0) // apex higher than "leg" => apex at the min y of the vector, electrode upright
+            else if ((isVertical && dy < 0) || (!isVertical && dx < 0))
             {
                 auto it = std::min_element(shape.begin(), shape.end(),
-                            [](const cv::Point& a, const cv::Point& b) {
-                                return a.y < b.y;   // compare by Y coordinate
+                            [isVertical](const cv::Point& a, const cv::Point& b) {
+                                return (isVertical ? a.y < b.y : a.x < b.x);
                             });
                 extremum = *it;
             }
             
-            int amplitude = std::max(std::abs(shape.front().y - extremum.y), std::abs(shape.back().y - extremum.y));
+            int amplitude = 0;
+            if (isVertical)
+            {
+                std::max(std::abs(shape.front().y - extremum.y), std::abs(shape.back().y - extremum.y));
+            }
+            else
+            {
+                std::max(std::abs(shape.front().x - extremum.x), std::abs(shape.back().x - extremum.x));
+            }
+
             // apex close to max/min of the polyline ? 
-            // choosing between 1/3(imgHeight) or contour amplitude because the contour might be too short after approximation
-            double tolerance = std::max(amplitude, static_cast<int>(imgHeight*0.33)) * 0.03; // 3 percent from either amplitude or 1/3(img height)
+            // choosing between 1/3(imgHeight or imgWidth) or contour amplitude because the contour might be too short after approximation
+            int dimension = isVertical ? imgHeight : imgWidth;
+            double tolerance = std::max(amplitude, static_cast<int>(dimension*0.33)) * 0.03; // 3 percent from either amplitude or 1/3(img height)
             if (cv::norm(extremum - apex) > tolerance)
             {
                 result = ApexSanityResult::APEX_ERR_APEX_FAR;
@@ -1678,8 +1722,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
         }
 
         // sanity check
-
-        ApexSanityResult isApexOk = ApexSanityCheck(approx, apex, imgGray.rows);
+        ApexSanityResult isApexOk = ApexSanityCheck(approx, apex, imgGray.rows, imgGray.cols);
 
         if (isApexOk == ApexSanityResult::APEX_OK)
         {
@@ -1689,7 +1732,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
         {
             apexError = isApexOk;
             break;
-            }
+        }
     }
 
     // might be duplicate points because contours might be duplicated
