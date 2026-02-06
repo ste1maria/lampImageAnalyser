@@ -143,7 +143,7 @@ cv::Mat SobelFilter(cv::Mat& inputImg, double threshMultiplier, ImageType type)
     // SOBEL edge detection
     cv::Mat sobelx, sobely, gradient;
     cv::Sobel(imgBlur, sobelx, CV_64F, 1, 0, 3);
-    cv::Sobel(imgBlur, sobely, CV_64F, 0, 1, 3);
+    cv::Sobel(imgBlur, sobely, CV_64F, 0, 1, 3); 
     cv::magnitude(sobelx, sobely, gradient);
     cv::Mat gradient_abs;
     cv::convertScaleAbs(gradient, gradient_abs);  
@@ -152,74 +152,24 @@ cv::Mat SobelFilter(cv::Mat& inputImg, double threshMultiplier, ImageType type)
     cv::normalize(gradient_abs, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
 
     cv::Mat thresh1;
-    if (type != ImageType::PHOTO)
-    {
-        cv::threshold(normalized, thresh1, 128, 255, cv::THRESH_TOZERO_INV);
-        cv::normalize(thresh1, thresh1, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    }
-    else
-    {
-        thresh1 = normalized;
-    }
-    //cv::imshow("thresh1", thresh1);
+    double thresholdLow = type == ImageType::XRAY ? 128 : 200;
+
+    cv::threshold(normalized, thresh1, thresholdLow, 255, cv::THRESH_TOZERO_INV);
+    cv::normalize(thresh1, thresh1, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+  
+    cv::imshow("thresh1", thresh1);
 
     cv::Mat edgesMask;
 
     // OTSU ALGO
     int otsuthresh = cv::threshold(thresh1, edgesMask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU | cv::THRESH_DRYRUN);
     cv::threshold(thresh1, edgesMask, otsuthresh * threshMultiplier, 255, cv::THRESH_BINARY);
-            cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_CLOSE,
-                         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7,7)));
-    //cv::imshow("otsuBin", edgesMask);
+    cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_CLOSE,
+                    cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7,7)));
+
+    cv::imshow("otsuBin", edgesMask);
 
     return edgesMask;
-}
-
-cv::Mat MorphGradDetection(cv::Mat & inputImg, int radius, int thr)
-{
-    cv::Mat imgBlur;
-    //cv::blur(imgGray, imgBlur, cv::Size(10,10));
-    cv::medianBlur(inputImg, imgBlur, 11);
-
-    cv::Mat normalized;
-    cv::normalize(imgBlur, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    cv::GaussianBlur(normalized, normalized, cv::Size(5, 5), 0);
-
-    cv::Mat se = cv::getStructuringElement(
-        cv::MORPH_ELLIPSE,
-        cv::Size(2 * 3 + 1, 2 * radius + 1)
-    );
-
-    cv::Mat grad;
-    cv::morphologyEx(normalized, grad, cv::MORPH_GRADIENT, se);
-    
-    cv::normalize(grad, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-
-    // // extract a range of brightness
-    // cv::Mat thresh;
-    // // cv::threshold(normalized, thresh, 75, 75, cv::THRESH_TOZERO_INV);
-    // cv::Mat normThresh;
-    // cv::normalize(thresh, normThresh, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    //cv::imshow("normalized morphgrad", normalized);
-
-    // cv::Mat edgeBin;
-    // if (thr > 0) 
-    // {
-    //     cv::threshold(normalized, edgeBin, thr, 255, cv::THRESH_BINARY);
-
-    //     // Optional cleanup: remove tiny specks and close small gaps
-    //     cv::morphologyEx(edgeBin, edgeBin, cv::MORPH_OPEN,
-    //                      cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3)));
-    //     cv::morphologyEx(edgeBin, edgeBin, cv::MORPH_CLOSE,
-    //                      cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3)));
-    // }
-
-    // get rid of "halo" and noisy lines
-    // cv::Mat edgesMask;
-    // cv::inRange(normalized, 0, 200, edgesMask);
-
-
-    return normalized;
 }
 
 std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultiplier, ImageType type)
@@ -251,16 +201,16 @@ std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultip
             }
     );
     
-    // cv::Mat tracedImg = img.clone();
-    // for (size_t i = 0; i < traced.size(); ++i)
-    // {
-    //     if (traced[i].size() < 100)
-    //     {
-    //         continue;
-    //     }
-    //     cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
-    // }
-    //cv::imshow("traced lamp", tracedImg);
+    cv::Mat tracedImg = img.clone();
+    for (size_t i = 0; i < traced.size(); ++i)
+    {
+        if (traced[i].size() < 100)
+        {
+            continue;
+        }
+        cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+    }
+    cv::imshow("traced lamp", tracedImg);
 
     return traced;
 }
@@ -298,7 +248,7 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
             {
                 success = this->SimplifyLampContours();
                 
-                // retry!
+                //retry!
                 if (!success)
                 {
                     double threshMultipliers[] = 
@@ -1244,10 +1194,29 @@ double angleBetween(const cv::Point2f& v1, const cv::Point2f& v2) {
     return angle * 180.0 / CV_PI;        // degrees
 }
 
+
+static double dot(const cv::Point2f& a, const cv::Point2f& b) {
+    return a.x*b.x + a.y*b.y;
+}
+
+static double cross2D(const cv::Point2f& a, const cv::Point2f& b) {
+    return a.x*b.y - a.y*b.x;
+}
+
+static double norm(const cv::Point2f& v) {
+    return std::sqrt(dot(v, v));
+}
+
+static double distance(const cv::Point & a, const cv::Point & b)
+{
+    cv::Point d = a - b;
+    return std::sqrt(d.x*d.x + d.y*d.y);
+}
+
 ApexSanityResult ApexSanityCheck
 (
     const std::vector<cv::Point> &shape,
-    cv::Point apex, 
+    int apexIdx, 
     int imgHeight,
     int imgWidth
 )
@@ -1267,151 +1236,56 @@ ApexSanityResult ApexSanityCheck
         isVertical = true;
     }
 
-    // determine orientation
+    // really hard to find the base vertices, let's pretend it is a triangle
+    cv::Point left = apexIdx > 0 ? shape[apexIdx-1] : cv::Point(0, 0);
+    cv::Point right = apexIdx < (shape.size() - 1) ? shape[apexIdx + 1] : cv::Point(0, 0);
 
-    double dy = static_cast<double>(apex.y) - static_cast<double>(shape.front().y);
-    double dx = static_cast<double>(apex.x) - static_cast<double>(shape.front().x);
-    if (dy == 0 && isVertical)
-    {
-        dy = static_cast<double>(apex.y) - static_cast<double>(shape.back().y);
-    }
-    if (dx == 0 && !isVertical)
-    {
-        dx = static_cast<double>(apex.x) - static_cast<double>(shape.back().x);
-    }
-
-    if ((dy == 0 && isVertical) || (dx == 0 && !isVertical))
-    {
-        return APEX_ERR_FAULTY_CONTOUR;
-    }
-
-    auto findMinMaxYAtX = [](const std::vector<cv::Point>& pts, int x, bool isUpright) -> std::optional<cv::Point> 
-    {
-        std::optional<cv::Point> best;
-        for (const auto& p : pts)
-        {
-            if (p.x == x) 
-            {
-                if ((isUpright && (!best || p.y > best->y)) // base has larger Y coordinates, almost max
-                || (!isUpright && (!best || p.y < best->y))) // base has smaller Y coordinates, almost 0
-                {
-                    best = p;
-                }
-            }
-        }
-        return best; // empty if no point with that x found
-    };
-
-    auto findMinMaxXAtY = [](const std::vector<cv::Point>& pts, int y, bool isLeftToRight) -> std::optional<cv::Point> 
-    {
-        std::optional<cv::Point> best;
-        for (const auto& p : pts) 
-        {
-            if (p.y == y) 
-            {
-                if ((!isLeftToRight && (!best || p.x > best->x)) // base has larger X coordinates, almost max
-                || (isLeftToRight && (!best || p.x < best->x))) // base has smaller X coordinates, almost 0
-                {
-                    best = p;
-                }
-            }
-        }
-        return best; // empty if no point with that x found
-    };
-
-    // really hard to find the base vertices
-    int left_x, right_x;
-    int up_y, down_y;
+    // apex projects on X axis on the base line?
     if (isVertical)
     {
-        left_x = FindMinMaxPoint(shape, false, true).x;
-        right_x = FindMinMaxPoint(shape, true, true).x;
+        if (((shape[apexIdx].x <= right.x) && (shape[apexIdx].x <= left.x))
+            || ((shape[apexIdx].x >= right.x) && (shape[apexIdx].x >= left.x)))
+        {
+            result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
+        }
     }
     else
     {
-        up_y = FindMinMaxPoint(shape, false, false).y;
-        down_y = FindMinMaxPoint(shape, true, false).y;
+        if (((shape[apexIdx].y <= right.y) && (shape[apexIdx].y <= left.y))
+            || ((shape[apexIdx].y >= right.y) && (shape[apexIdx].y >= left.y)))
+        {
+            result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
+        }
     }
-
-    bool isShapeUpright = dy > 0 ? false : true;
-    bool isLeftToRight = dx > 0 ? true : false;
     
-    cv::Point left = cv::Point(left_x, findMinMaxYAtX(shape, left_x, isShapeUpright)->y);
-    cv::Point right = cv::Point(right_x, findMinMaxYAtX(shape, right_x, isShapeUpright)->y);
-
-    cv::Point up = cv::Point(findMinMaxXAtY(shape, up_y, isLeftToRight)->x, up_y);
-    cv::Point down = cv::Point(findMinMaxXAtY(shape, down_y, isLeftToRight)->x, down_y);
-
-    // Base is wide enough?
-    cv::Point QR = isVertical ? (right - left) : (up - down);
-    double L2 = QR.dot(QR);
-    if (L2 <= 10) // i know, magic number... 10 pix is actually too thin, baby
-    {
-        result = ApexSanityResult::APEX_ERR_CONTOUR_TOO_THIN;
-    }
 
     if (result == ApexSanityResult::APEX_OK)
     {
-        // apex projects on X axis on the base line?
-        if (isVertical)
+        // check that the height falling from the apex to the center of the base if almost vertical or almost horizontal
+        cv::Point center = cv::Point((left.x + right.x)/2, (left.y + right.y)/2);
+        cv::Point v = cv::Point(center - shape[apexIdx]);
+        if (v.x == 0 && v.y == 0)
         {
-            if (((apex.x < right.x) && (apex.x < left.x))
-                || ((apex.x > right.x) && (apex.x > left.x)))
-            {
-                result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
-            }
+            result = APEX_ERR_FAULTY_CONTOUR;
         }
         else
         {
-            if (((apex.y < down.y) && (apex.y < up.y))
-                || ((apex.y > down.y) && (apex.y > up.y)))
-            {
-                result = ApexSanityResult::APEX_ERR_APEX_OUTSIDE;
-            }
-        }
-
-         if (result == ApexSanityResult::APEX_OK)
-        {
-            // determine the extremum - the actual apex
-            cv::Point extremum;
-            if (isVertical && dy > 0 || !isVertical && dx > 0) 
-            {
-                auto it = std::max_element(shape.begin(), shape.end(),
-                            [isVertical](const cv::Point& a, const cv::Point& b) {
-                                return (isVertical ? a.y < b.y : a.x < b.x);
-                            });
-                extremum = *it;
-            }
-            else if ((isVertical && dy < 0) || (!isVertical && dx < 0))
-            {
-                auto it = std::min_element(shape.begin(), shape.end(),
-                            [isVertical](const cv::Point& a, const cv::Point& b) {
-                                return (isVertical ? a.y < b.y : a.x < b.x);
-                            });
-                extremum = *it;
-            }
-            
-            int amplitude = 0;
+            double angle = 180.0;
             if (isVertical)
             {
-                std::max(std::abs(shape.front().y - extremum.y), std::abs(shape.back().y - extremum.y));
+                angle = std::atan2(std::abs(v.x), std::abs(v.y)) * 180.0 / CV_PI;
             }
             else
             {
-                std::max(std::abs(shape.front().x - extremum.x), std::abs(shape.back().x - extremum.x));
+                angle = std::atan2(std::abs(v.y), std::abs(v.x)) * 180.0 / CV_PI;
             }
 
-            // apex close to max/min of the polyline ? 
-            // choosing between 1/3(imgHeight or imgWidth) or contour amplitude because the contour might be too short after approximation
-            int dimension = isVertical ? imgHeight : imgWidth;
-            double tolerance = std::max(amplitude, static_cast<int>(dimension*0.33)) * 0.03; // 3 percent from either amplitude or 1/3(img height)
-            if (cv::norm(extremum - apex) > tolerance)
+            if (angle > 30)
             {
-                result = ApexSanityResult::APEX_ERR_APEX_FAR;
+                result =  APEX_ERR_FAULTY_CONTOUR;
             }
         }
     }
-    
     return result;
 }
 
@@ -1463,30 +1337,14 @@ QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPo
     return QPair(distance, angle);
 }
 
-static double dot(const cv::Point2f& a, const cv::Point2f& b) {
-    return a.x*b.x + a.y*b.y;
-}
-
-static double cross2D(const cv::Point2f& a, const cv::Point2f& b) {
-    return a.x*b.y - a.y*b.x;
-}
-
-static double norm(const cv::Point2f& v) {
-    return std::sqrt(dot(v, v));
-}
-
-static double distance(const cv::Point & a, const cv::Point & b)
-{
-    cv::Point d = a - b;
-    return std::sqrt(d.x*d.x + d.y*d.y);
-}
 
 void JoinSegmentsRecursive
 (
     std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>>& output, 
     bool isSorted=false,
-    ImageType imgType = ImageType::XRAY
+    ImageType imgType = ImageType::XRAY,
+    cv::Point imgDim = cv::Point(2500, 2500)
 )
 {
     std::vector<std::vector<cv::Point>> inputVector = input;
@@ -1521,12 +1379,18 @@ void JoinSegmentsRecursive
         bool toJoin = false;
         bool duplicate = false;
 
-        float vectorLen = sqrt( pow((inputVector[i].front().x - inputVector[i].back().x), 2) +
-                                        pow((inputVector[i].front().y - inputVector[i].back().y), 2)
-                                    );
-        float pointsTolerance = imgType == ImageType::XRAY? 0.1*vectorLen : 0.25*vectorLen; // px
+        float vectorLen_i = sqrt( pow((inputVector[i].front().x - inputVector[i].back().x), 2) +
+                            pow((inputVector[i].front().y - inputVector[i].back().y), 2)
+                        );
+                        
         for (int j = 0; j < inputVector.size(); j++)
         {
+
+            float vectorLen_j = sqrt( pow((inputVector[j].front().x - inputVector[j].back().x), 2) +
+                            pow((inputVector[j].front().y - inputVector[j].back().y), 2)
+                        );
+            float len = std::max(vectorLen_i, vectorLen_j);
+            float pointsTolerance = imgType == ImageType::XRAY? 0.1*len : 0.5*len; // px
             if (j == i)
             {
                 continue;
@@ -1548,9 +1412,9 @@ void JoinSegmentsRecursive
 
 
             bool sameBeginToBegin = distance(inputVector[j].front(),inputVector[i].front())
-                                        <  vectorLen*0.01;
+                                        <  len*0.01;
             bool sameEndToEnd = distance(inputVector[j].back(),inputVector[i].back())
-                                        <  vectorLen*0.01;
+                                        <  len*0.01;
   
             if (sameBeginToBegin & sameEndToEnd ) // similar
             {
@@ -1602,6 +1466,11 @@ void JoinSegmentsRecursive
                 else
                 {
                     qDebug() << "intersection far, but shouldn't be!";
+                    continue;
+                }
+                
+                if (intersection.x < 0 || intersection.y < 0 || intersection.x > imgDim.x || intersection.y > imgDim.y)
+                {
                     continue;
                 }
 
@@ -1824,6 +1693,16 @@ void FindApexes(const std::vector<std::vector<cv::Point>>& inputVector, std::vec
     apexes = apexesRaw;
 }
 
+void RemoveMisalignedApexes(std::vector<cv::Point>& input, std::vector<cv::Point>& output)
+{
+    std::vector<cv::Point> apexesCleaned;
+
+
+    //auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
+
+
+}
+
 bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 {
     bool success = true;
@@ -1844,99 +1723,91 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     // TRACING
     cv::Mat toTrace = img.clone();
 
+    int lenThr = 40;
+    double distThr = 1.4142;
+    int canny1Thr = 25;
+    int canny2Thr = 75;
+
+    if (imageType == ImageType::PHOTO)
+    {
+        lenThr = 40;
+        canny1Thr = 100;
+        canny2Thr = 255;
+    }
+    cv::Ptr<cv::ximgproc::FastLineDetector> fld =
+            cv::ximgproc::createFastLineDetector(lenThr,
+                                                distThr,
+                                                canny1Thr, canny2Thr,
+                                                /*aperture=*/3, /*do_merge=*/true);
+
+    std::vector<cv::Vec4f> lines;
+    fld->detect(imgGray, lines);
+
+    std::vector<std::vector<cv::Point>> segments;
     std::vector<std::vector<cv::Point>> electrodesJoined;
-
-    if (imageType == ImageType::XRAY)
+    
+    for (const auto& l : lines) 
     {
-        cv::Ptr<cv::ximgproc::FastLineDetector> fld =
-            cv::ximgproc::createFastLineDetector(/*length_threshold=*/40,
-                                                /*distance_threshold=*/1.4142,
-                                                /*canny_th1=*/25, /*canny_th2=*/75,
-                                                /*aperture=*/3, /*do_merge=*/true);
-
-        std::vector<cv::Vec4f> lines;
-        fld->detect(imgGray, lines);
-
-        std::vector<std::vector<cv::Point>> segments;
-        for (const auto& l : lines) 
-        {
-            segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
-                                cv::Point(cvRound(l[2]), cvRound(l[3])) });
-        }
-
-        // for (auto poly : segments)
-        // {
-        //     cv::polylines(toTrace, poly, 0, colours[1]);
-        // }
-
-        //cv::imshow("raw", toTrace);
-        // join broken contours
-        this->lamp.electrodes.clear();
-        JoinSegmentsRecursive(segments, electrodesJoined);
-        int i = 0;
-        for (auto poly : electrodesJoined)
-        {
-            cv::polylines(toTrace, poly, 0, colours[i]);
-            i++;
-        }
-        cv::imshow("joined", toTrace);
+        segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
+                            cv::Point(cvRound(l[2]), cvRound(l[3])) });
     }
-    else
+
+    // for (auto poly : segments)
+    // {
+    //     cv::polylines(toTrace, poly, 0, colours[1]);
+    // }
+
+    // cv::imshow("raw", toTrace);
+
+    //join broken contours
+    this->lamp.electrodes.clear();
+    JoinSegmentsRecursive(segments, electrodesJoined, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
+
+    std::sort(electrodesJoined.begin(), electrodesJoined.end(),
+        [](auto &a, auto &b)
+        { 
+            return a.size() < b.size(); 
+        }
+    );
+    while (electrodesJoined.back().size() < 3)
     {
-        cv::Ptr<cv::ximgproc::FastLineDetector> fld =
-            cv::ximgproc::createFastLineDetector(/*length_threshold=*/50,
-                                                /*distance_threshold=*/1.4142,
-                                                /*canny_th1=*/200, /*canny_th2=*/255,
-                                                /*aperture=*/3, /*do_merge=*/true);
-
-        std::vector<cv::Vec4f> lines;
-        fld->detect(imgGray, lines);
-
-        std::vector<std::vector<cv::Point>> segments;
-        for (const auto& l : lines) 
-        {
-            segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
-                                cv::Point(cvRound(l[2]), cvRound(l[3])) });
-        }
-
-        // for (auto& poly : segments)
-        // {
-        //     cv::polylines(toTrace, poly, 0, colours[1], 3);
-        // }
-
-        // cv::imshow("raw", toTrace);
-
-        this->lamp.electrodes.clear();
-        JoinSegmentsRecursive(segments, electrodesJoined);
-        int i = 0;
-        for (auto poly : electrodesJoined)
-        {
-            cv::polylines(toTrace, poly, 0, colours[i]);
-            i++;
-        }
-        cv::imshow("JOINED", toTrace);
+        electrodesJoined.pop_back();
     }
+
+    // cv::Mat toShow = img.clone();
+    // int i = 1;
+    // for (auto poly : electrodesJoined)
+    // {
+    //     cv::polylines(toShow, poly, 0, colours[3],3);
+    //     cv::putText(toShow, 
+    //         cv::String(std::to_string(i)),  
+    //         poly[0],
+    //         cv::FONT_HERSHEY_PLAIN,
+    //         0.9,
+    //         colours[3]
+    //     );
+    //     i++;
+    // }
+    // cv::imshow("JOINED", toShow);
 
     // find vertices
     std::vector<cv::Point> apexesVect;
     ApexSanityResult apexError = ApexSanityResult::APEX_OK;
 
     for (auto electrode : electrodesJoined)
-    {
+    { 
         if (electrode.size() <= 2)
         {
             // too small -> not connected to anything
             continue;
         }
-
-        this->lamp.electrodes.push_back(electrode);
         // Approximate polyline with straight segments
         std::vector<cv::Point> approx;
         double epsilon = 10.0; // Approximation accuracy
         cv::approxPolyDP(electrode, approx, epsilon, false);
 
         // Find angles between consecutive segments
-        double smallestAngle = 45;
+        double limitAngle = 45;
         cv::Point apex(0,0);
 
         for (size_t i = 1; i + 1 < approx.size(); ++i) {
@@ -1950,30 +1821,19 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
             if (cv::norm(v1) < 1e-6 || cv::norm(v2) < 1e-6) continue;
 
             double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
-            if (interior_deg < smallestAngle && interior_deg > 5.0)
+            if (interior_deg < limitAngle && interior_deg > 15.0)
             {  
-                smallestAngle = interior_deg;
                 apex = approx[i];
 
+                ApexSanityResult isApexOk = ApexSanityCheck(approx, i, imgGray.rows, imgGray.cols);
+
+                if (isApexOk == ApexSanityResult::APEX_OK)
+                {
+                    apexesVect.push_back(apex);
+                    this->lamp.electrodes.push_back(electrode);
+                }
+
             }
-        }
-        // the apex is not sharp enough
-        if (apex.x == 0 && apex.y == 0)
-        {
-            continue;
-        }
-
-        // sanity check
-        ApexSanityResult isApexOk = ApexSanityCheck(approx, apex, imgGray.rows, imgGray.cols);
-
-        if (isApexOk == ApexSanityResult::APEX_OK)
-        {
-            apexesVect.push_back(apex);
-        }
-        else
-        {
-            apexError = isApexOk;
-            break;
         }
     }
 
@@ -1981,6 +1841,36 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     if (apexesVect.size() > 2)
     {
         RemoveDuplicatePoints(apexesVect, apexesVect);
+    }
+
+    // only leave those that are aligned (stricly horizontal) or misalighned on a small angle
+    if (apexesVect.size() > 2)
+    {
+        double minDistance = 1000;
+        QPair<int, int> bestApexes = {0,0};
+        std::vector<cv::Point> twoApexes;
+        for (int i = 0; i < apexesVect.size(); ++i)
+        {
+            for (int j = 1; j < apexesVect.size(); ++j)
+            {
+                if (j == i)
+                {
+                    continue;
+                }
+                auto [distance, angle] = CalculateDistanceAngle(apexesVect[i], apexesVect[j]);
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    bestApexes = {i, j};
+                }
+            }
+        }
+        if (bestApexes.first != bestApexes.second)
+        {
+            twoApexes.push_back(apexesVect[bestApexes.first]);
+            twoApexes.push_back(apexesVect[bestApexes.second]);
+            apexesVect = twoApexes;
+        }
     }
 
     if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)

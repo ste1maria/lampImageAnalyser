@@ -55,7 +55,7 @@ bool ImageProcessor::UploadImage(QString fileName)
     }
     else if (image.height() > 1200 && image.width() > 1920)
     {
-        image = image.scaled(QSize(1920, 1200), Qt::KeepAspectRatio);
+        image = image.scaled(QSize(1200, 900), Qt::KeepAspectRatio);
     }
     this->currentImage = image.convertToFormat(QImage::Format_BGR888);
     this->originalImage = currentImage.copy();
