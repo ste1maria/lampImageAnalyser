@@ -106,6 +106,7 @@ private:
         double electrodesDistancePx = 0;
         double electrodesAngle = 0.0f;
         double pixelMmRatio = 55.5; // const derived from statistics ONLY FOR XRAY!
+        bool isVertical = false;
     };
 
     const double standardLampWidth_mm = 7.00;

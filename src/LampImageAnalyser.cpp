@@ -53,10 +53,55 @@ cv::Scalar colours[] = {
 };
 
 
+// Signed turn: left turn +, right turn -, range (-180, 180]
+double turnAngleDeg(const cv::Point2f& v1, const cv::Point2f& v2) {
+    double dot = v1.dot(v2);
+    double det = v1.x * v2.y - v1.y * v2.x;     // z-component of 2D cross
+    return std::atan2(det, dot) * 180.0 / CV_PI;
+}
+
+// Interior angle between segments (0..180)
+double interiorAngleDeg(const cv::Point2f& v1, const cv::Point2f& v2) {
+    double turn = turnAngleDeg(v1, v2);
+    double interior = 180.0 - std::fabs(turn);
+    // numeric guard
+    if (interior < 0)   interior = 0;
+    if (interior > 180) interior = 180;
+    return interior;
+}
+
+// Helper to compute angle between two vectors
+double angleBetween(const cv::Point2f& v1, const cv::Point2f& v2) {
+    double dot = v1.dot(v2);
+    double det = v1.x * v2.y - v1.y * v2.x;
+    double angle = std::atan2(det, dot); // radians
+    return angle * 180.0 / CV_PI;        // degrees
+}
+
+
+static double dot(const cv::Point2f& a, const cv::Point2f& b) {
+    return a.x*b.x + a.y*b.y;
+}
+
+static double cross2D(const cv::Point2f& a, const cv::Point2f& b) {
+    return a.x*b.y - a.y*b.x;
+}
+
+static double norm(const cv::Point2f& v) {
+    return std::sqrt(dot(v, v));
+}
+
+static double distance(const cv::Point & a, const cv::Point & b)
+{
+    cv::Point d = a - b;
+    return std::sqrt(d.x*d.x + d.y*d.y);
+}
+
 void JoinSegmentsRecursive
 (
     std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>>& output, 
+    double toleranceLen,
     bool isSorted=false,
     ImageType imgType = ImageType::XRAY,
     cv::Point imgDim = cv::Point(2500, 2500)
@@ -223,25 +268,25 @@ std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultip
     // TRACING
     std::vector<std::vector<cv::Point>> traced;
     cv::findContours(finalEdges, traced, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-    std::sort(traced.begin(), traced.end(),
-            [](auto &a, auto &b)
-            { 
-            return a.size() > b.size(); 
-            }
-    );
     
-    cv::Mat tracedImg = img.clone();
+
+    std::vector<std::vector<cv::Point>> tracedCleanedUp;
+
     for (size_t i = 0; i < traced.size(); ++i)
     {
-        if (traced[i].size() < 100)
+        if (traced[i].size() > 100)
         {
-            continue;
+            tracedCleanedUp.push_back(traced[i]);
         }
-        cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+    }
+    cv::Mat tracedImg = img.clone();
+    for (size_t i = 0; i < tracedCleanedUp.size(); ++i)
+    {
+        cv::polylines(tracedImg, tracedCleanedUp[i], false, coloursRandom[i]);
         double fontScale = 1;
         cv::putText(tracedImg, 
             cv::String(std::to_string(i)), 
-            traced[0][0],
+            tracedCleanedUp[i][0],
             cv::FONT_HERSHEY_DUPLEX,
             fontScale,
             coloursRandom[i]
@@ -249,7 +294,7 @@ std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultip
     }
     cv::imshow("traced lamp", tracedImg);
 
-    return traced;
+    return tracedCleanedUp;
 }
 
 bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
@@ -599,50 +644,43 @@ void CutCloseToCenter
     const std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>> &output, 
     cv::Point center, 
-    int allowedDistance
+    int allowedDistance,
+    bool isVertical
 )
 {
-    std::vector<std::vector<cv::Point>> divided;
-    bool isVertical = false;
+    std::vector<std::vector<cv::Point>> pieces;
 
     for (auto contour : input)
     {
-
-        int verticalDiff = FindMinMaxPoint(contour, true, false).y - FindMinMaxPoint(contour, false, false).y;
-        int horizontalDiff = FindMinMaxPoint(contour, true, true).x - FindMinMaxPoint(contour, false, true).x;
-        if (horizontalDiff < verticalDiff)
+        if (contour.size() < 100)
         {
-            isVertical = true;
+            continue;
         }
 
-        bool aboveLimit = false;
-        size_t pieceStart = 0;
-        size_t skipStart  = 0;  
-
+        std::vector<cv::Point> piece;
         for (int i = 0; i < contour.size(); ++i)
         {
-            int distance = isVertical ? contour[i].y - center.y: contour[i].x - center.x;
-            bool isOutside = std::abs(distance) > allowedDistance;
-            if (!aboveLimit && isOutside)
+            int dist = isVertical ? contour[i].y - center.y: contour[i].x - center.x;
+            if (std::abs(dist) <= allowedDistance)
             {
-                // split here
-                if (i > pieceStart)
-                {
-                    divided.emplace_back(contour.begin() + pieceStart, contour.begin() + i);
-
-                }
-                aboveLimit = true;
-                skipStart = i;
+                piece.push_back(contour[i]);
             }
-            else if (aboveLimit && !isOutside)
+            else
             {
-                // cut off points that we skipped
-                pieceStart = i;
-                aboveLimit = false;
+                if (piece.size() > 10)
+                {
+                    pieces.push_back(piece);
+                    piece.clear();
+                }
             }
         }
+        if (piece.size() > 10)
+        {
+            pieces.push_back(piece);
+            piece.clear();
+        }
     }
-    output = divided;
+    output = pieces;
 }
 
 // TODO: larger value of tolerance for larger images
@@ -749,30 +787,35 @@ bool LampImageAnalyser::SimplifyLampContours()
 
         std::vector<std::vector<cv::Point>> segmentsRaw;
 
-        bool isVertical = false;
-        // split contours into monotonous segments
-        //DivideLongContours(this->contours, segments);
+        bool isVertical = this->lamp.isVertical;
 
         // cut points far from center (easier than divide into monotonous parts at extrema)
-        CutCloseToCenter(this->contours, segmentsRaw, this->lamp.lampCenter, 2.5*this->lamp.pixelMmRatio);
+        CutCloseToCenter
+        (
+            this->contours, 
+            segmentsRaw, 
+            this->lamp.lampCenter, 
+            2*this->lamp.electrodesDistancePx, 
+            isVertical
+        );
 
-        for (size_t i = 0; i < segmentsRaw.size(); i++)
+        std::vector<std::vector<cv::Point>> segments;
+        if (segmentsRaw.size() > 4)
+        {
+            double toleranceLen = 0.05;
+            JoinSegmentsRecursive(segmentsRaw, segments, toleranceLen);
+        }
+
+        for (size_t i = 0; i < segments.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
             // TODO: better method?
-            if (segmentsRaw[i].size() < 100)
+            if (segments[i].size() < 100)
             {  
                 continue;
             }
             
-            std::vector<cv::Point> contour = segmentsRaw[i];
-
-            int verticalDiff = FindMinMaxPoint(contour, true, false).y - FindMinMaxPoint(contour, false, false).y;
-            int horizontalDiff = FindMinMaxPoint(contour, true, true).x - FindMinMaxPoint(contour, false, true).x;
-            if (horizontalDiff < verticalDiff)
-            {
-                isVertical = true;
-            }
+            std::vector<cv::Point> contour = segments[i];
 
             std::sort(contour.begin(), contour.end(), [isVertical](const cv::Point& a, const cv::Point& b) {
                 return (isVertical ? a.y < b.y : a.x < b.x);
@@ -820,12 +863,17 @@ bool LampImageAnalyser::SimplifyLampContours()
 
             trueContours.push_back(contour);
         }
-        // double fontScale = this->currentImageCv->cols / 700;
-        // int i = 0;
-        // for (auto segment : trueContours)
+
+        //remove duplicates
+        std::vector<std::vector<cv::Point>> segmentsCleaned;
+        segmentsCleaned = RemoveSimilarContours(trueContours);
+
+        // cv::Mat joinedContours = this->currentImageCv->clone();
+        // i = 0;
+        // for (auto segment : segmentsCleaned)
         // {
-        //     cv::polylines(trueContoured, segment, false, colours[i], 3);
-        //     cv::putText(trueContoured, 
+        //     cv::polylines(joinedContours, segment, false, colours[i], 3);
+        //     cv::putText(joinedContours, 
         //         cv::String(std::to_string(i)), 
         //         segment[0],
         //         cv::FONT_HERSHEY_DUPLEX,
@@ -834,28 +882,9 @@ bool LampImageAnalyser::SimplifyLampContours()
         //     );
         //     i++;
         // }
-        // cv::imshow("true contours", trueContoured);
+        // cv::imshow("joined contours", joinedContours);
 
-        //remove duplicates
-        std::vector<std::vector<cv::Point>> segmentsCleaned;
-        segmentsCleaned = RemoveSimilarContours(trueContours);
         trueContours = segmentsCleaned;
-
-        int i = 0;
-        cv::Mat cleanedContours = this->currentImageCv->clone();
-        for (auto segment : trueContours)
-        {
-            cv::polylines(cleanedContours, segment, false, colours[i], 3);
-            cv::putText(cleanedContours, 
-                cv::String(std::to_string(i)), 
-                segment[0],
-                cv::FONT_HERSHEY_DUPLEX,
-                1,
-                colours[i]
-            );
-            i++;
-        }
-        cv::imshow("true contours CLEANED", cleanedContours);
 
         // find pixel to mm ratio from lamp width
         if (this->imageType == ImageType::XRAY)
@@ -1143,50 +1172,6 @@ void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QP
     //emit RadiiCalculated(radii);
 }
 
-// Signed turn: left turn +, right turn -, range (-180, 180]
-double turnAngleDeg(const cv::Point2f& v1, const cv::Point2f& v2) {
-    double dot = v1.dot(v2);
-    double det = v1.x * v2.y - v1.y * v2.x;     // z-component of 2D cross
-    return std::atan2(det, dot) * 180.0 / CV_PI;
-}
-
-// Interior angle between segments (0..180)
-double interiorAngleDeg(const cv::Point2f& v1, const cv::Point2f& v2) {
-    double turn = turnAngleDeg(v1, v2);
-    double interior = 180.0 - std::fabs(turn);
-    // numeric guard
-    if (interior < 0)   interior = 0;
-    if (interior > 180) interior = 180;
-    return interior;
-}
-
-// Helper to compute angle between two vectors
-double angleBetween(const cv::Point2f& v1, const cv::Point2f& v2) {
-    double dot = v1.dot(v2);
-    double det = v1.x * v2.y - v1.y * v2.x;
-    double angle = std::atan2(det, dot); // radians
-    return angle * 180.0 / CV_PI;        // degrees
-}
-
-
-static double dot(const cv::Point2f& a, const cv::Point2f& b) {
-    return a.x*b.x + a.y*b.y;
-}
-
-static double cross2D(const cv::Point2f& a, const cv::Point2f& b) {
-    return a.x*b.y - a.y*b.x;
-}
-
-static double norm(const cv::Point2f& v) {
-    return std::sqrt(dot(v, v));
-}
-
-static double distance(const cv::Point & a, const cv::Point & b)
-{
-    cv::Point d = a - b;
-    return std::sqrt(d.x*d.x + d.y*d.y);
-}
-
 ApexSanityResult ApexSanityCheck
 (
     const std::vector<cv::Point> &shape,
@@ -1315,6 +1300,7 @@ void JoinSegmentsRecursive
 (
     std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>>& output, 
+    double toleranceLen,
     bool isSorted,
     ImageType imgType,
     cv::Point imgDim
@@ -1356,18 +1342,13 @@ void JoinSegmentsRecursive
         bool toJoin = false;
         bool duplicate = false;
 
-        float vectorLen_i = sqrt( pow((inputVector[i].front().x - inputVector[i].back().x), 2) +
-                            pow((inputVector[i].front().y - inputVector[i].back().y), 2)
-                        );
+        float vectorLen_i = cv::arcLength(inputVector[i], false);
                         
         for (int j = 0; j < inputVector.size(); j++)
         {
-
-            float vectorLen_j = sqrt( pow((inputVector[j].front().x - inputVector[j].back().x), 2) +
-                            pow((inputVector[j].front().y - inputVector[j].back().y), 2)
-                        );
+            float vectorLen_j = cv::arcLength(inputVector[j], false);
             float len = std::max(vectorLen_i, vectorLen_j);
-            float pointsTolerance = imgType == ImageType::XRAY? 0.1*len : 0.5*len; // px
+            float pointsTolerance = toleranceLen * len;
             if (j == i)
             {
                 continue;
@@ -1517,7 +1498,7 @@ void JoinSegmentsRecursive
 
     if (anyMerged)
     {
-        JoinSegmentsRecursive(jointVector, outputVector, true);
+        JoinSegmentsRecursive(jointVector, outputVector, toleranceLen, true);
         output = outputVector;
     }
     else
@@ -1670,16 +1651,6 @@ void FindApexes(const std::vector<std::vector<cv::Point>>& inputVector, std::vec
     apexes = apexesRaw;
 }
 
-void RemoveMisalignedApexes(std::vector<cv::Point>& input, std::vector<cv::Point>& output)
-{
-    std::vector<cv::Point> apexesCleaned;
-
-
-    //auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
-
-
-}
-
 bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 {
     bool success = true;
@@ -1738,8 +1709,10 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
     //join broken contours
     this->lamp.electrodes.clear();
-    JoinSegmentsRecursive(segments, electrodesJoined, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
+    double tolerance = imageType == ImageType::XRAY ? 0.1 : 0.05;
+    JoinSegmentsRecursive(segments, electrodesJoined, tolerance, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
 
+    // I HAVE NO IDEA WHY, BUT DON'T TOUCH
     std::sort(electrodesJoined.begin(), electrodesJoined.end(),
         [](auto &a, auto &b)
         { 
@@ -1868,6 +1841,24 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
         this->lamp.electrodesApexes = apexes;
         this->lamp.electrodesAngle = angle;
     }
+
+    // WRITE DOWN VERTICALITY
+    std::vector<cv::Point> electrode0 = this->lamp.electrodes[0];
+    int verticalDiff = FindMinMaxPoint(electrode0, true, false).y - FindMinMaxPoint(electrode0, false, false).y;
+    int horizontalDiff = FindMinMaxPoint(electrode0, true, true).x - FindMinMaxPoint(electrode0, false, true).x;
+    this->lamp.isVertical = (horizontalDiff < verticalDiff);
+
+    cv::Mat drawn = this->currentImageCv->clone();
+
+    cv::drawMarker(
+        drawn,
+        this->lamp.electrodesApexes.first,
+        cv::Scalar(0,255,255),
+        cv::MARKER_CROSS,   // <- use a valid marker type
+        10,                 // markerSize
+        1                   // thickness
+    );
+
     return success;
 }
 
