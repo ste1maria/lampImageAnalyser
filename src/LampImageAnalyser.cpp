@@ -192,7 +192,7 @@ cv::Mat SobelFilter(const cv::Mat& inputImg, double threshMultiplier, ImageType 
     }
     else
     {
-        imgBlur = inputImg;
+        cv::bilateralFilter(inputImg, imgBlur, 7, 75, 75);
     }
 
     cv::Mat normalized;
@@ -279,20 +279,20 @@ std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultip
             tracedCleanedUp.push_back(traced[i]);
         }
     }
-    cv::Mat tracedImg = img.clone();
-    for (size_t i = 0; i < tracedCleanedUp.size(); ++i)
-    {
-        cv::polylines(tracedImg, tracedCleanedUp[i], false, coloursRandom[i]);
-        double fontScale = 1;
-        cv::putText(tracedImg, 
-            cv::String(std::to_string(i)), 
-            tracedCleanedUp[i][0],
-            cv::FONT_HERSHEY_DUPLEX,
-            fontScale,
-            coloursRandom[i]
-        );
-    }
-    cv::imshow("traced lamp", tracedImg);
+    // cv::Mat tracedImg = img.clone();
+    // for (size_t i = 0; i < tracedCleanedUp.size(); ++i)
+    // {
+    //     cv::polylines(tracedImg, tracedCleanedUp[i], false, coloursRandom[i]);
+    //     double fontScale = 1;
+    //     cv::putText(tracedImg, 
+    //         cv::String(std::to_string(i)), 
+    //         tracedCleanedUp[i][0],
+    //         cv::FONT_HERSHEY_DUPLEX,
+    //         fontScale,
+    //         coloursRandom[i]
+    //     );
+    // }
+    // cv::imshow("traced lamp", tracedImg);
 
     return tracedCleanedUp;
 }
@@ -706,12 +706,23 @@ std::vector<std::vector<cv::Point>> RemoveSimilarContours
         curves[i] = resampleByArcLen(approx, 2.0f, false);
     }
 
+    std::vector<bool> markedToRemove(curves.size(), false);
+
     for (size_t i = 0; i < curves.size(); ++i)
     {
-        distanceTolerance = cv::arcLength(curves[i], false) * 0.1;
+        if (markedToRemove[i])
+        {
+            continue;
+        }
+        double len_i = cv::arcLength(curves[i], false);
         for (size_t j = i + 1; j < curves.size(); ++j)
         {
+            distanceTolerance = std::min(cv::arcLength(curves[j], false), len_i) * 0.1;
 
+            if (markedToRemove[j])
+            {
+                continue;
+            }
             const auto& contour1 = curves[i];
             const auto& contour2 = curves[j];
             
@@ -745,23 +756,14 @@ std::vector<std::vector<cv::Point>> RemoveSimilarContours
             
             if (avgDist < distanceTolerance)
             {
-                similarPairs.push_back({i, j});
+                markedToRemove[j] = true;
             }
         }
     }
 
     for (int i = 0; i < contours.size(); ++i)
     {
-        bool toBeRemoved = false;
-        for (auto pair : similarPairs)
-        {
-            if (pair.second == i)
-            {
-                toBeRemoved = true;
-                break;
-            }
-        }
-        if (!toBeRemoved)
+        if (!markedToRemove[i])
         {
             cleanedContours.push_back(contours[i]);
         }
@@ -795,27 +797,61 @@ bool LampImageAnalyser::SimplifyLampContours()
             this->contours, 
             segmentsRaw, 
             this->lamp.lampCenter, 
-            2*this->lamp.electrodesDistancePx, 
+            2.5*this->lamp.electrodesDistancePx, 
             isVertical
         );
 
-        std::vector<std::vector<cv::Point>> segments;
-        if (segmentsRaw.size() > 4)
-        {
-            double toleranceLen = 0.05;
-            JoinSegmentsRecursive(segmentsRaw, segments, toleranceLen);
-        }
+        // cv::Mat cutContours = this->currentImageCv->clone();
+        // int i = 0;
+        // for (auto segment : segmentsRaw)
+        // {
+        //     cv::polylines(cutContours, segment, false, colours[i], 3);
+        //     cv::putText(cutContours, 
+        //         cv::String(std::to_string(i)), 
+        //         segment[0],
+        //         cv::FONT_HERSHEY_DUPLEX,
+        //         1,
+        //         colours[i]
+        //     );
+        //     i++;
+        // }
+        
+        // cv::imshow("cut contours", cutContours);
 
-        for (size_t i = 0; i < segments.size(); i++)
+        // std::vector<std::vector<cv::Point>> segments;
+        // if (segmentsRaw.size() > 4)
+        // {
+        //     double toleranceLen = 0.05;
+        //     JoinSegmentsRecursive(segmentsRaw, segments, toleranceLen);
+        // }
+
+        // cv::Mat jointedContours = this->currentImageCv->clone();
+        // i = 0;
+        // for (auto segment : segments)
+        // {
+        //     cv::polylines(jointedContours, segment, false, colours[i], 3);
+        //     cv::putText(jointedContours, 
+        //         cv::String(std::to_string(i)), 
+        //         segment[0],
+        //         cv::FONT_HERSHEY_DUPLEX,
+        //         1,
+        //         colours[i]
+        //     );
+        //     i++;
+        // }
+        
+        // cv::imshow("joined contours", jointedContours);
+
+        for (size_t i = 0; i < segmentsRaw.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
             // TODO: better method?
-            if (segments[i].size() < 100)
+            if (segmentsRaw[i].size() < 50)
             {  
                 continue;
             }
             
-            std::vector<cv::Point> contour = segments[i];
+            std::vector<cv::Point> contour = segmentsRaw[i];
 
             std::sort(contour.begin(), contour.end(), [isVertical](const cv::Point& a, const cv::Point& b) {
                 return (isVertical ? a.y < b.y : a.x < b.x);
@@ -847,44 +883,60 @@ bool LampImageAnalyser::SimplifyLampContours()
             
             this->lamp.wallsApexes.push_back(contour[apexIdx]);
 
+            int checkApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
             if (startApex == 0 && endApex == 0)
             {
-                startApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
-                endApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
+                startApex = checkApex;
+                endApex = checkApex;
             }
-            else if (contour[apexIdx].x < startApex)
+            else if (checkApex < startApex)
             {
-                startApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
+                startApex = isVertical ? checkApex : contour[apexIdx].y;
             }
-            else if (contour[apexIdx].x > endApex)
+            else if (checkApex > endApex)
             {
-                endApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
+                endApex = isVertical ? checkApex : contour[apexIdx].y;
             }
 
             trueContours.push_back(contour);
         }
 
-        //remove duplicates
-        std::vector<std::vector<cv::Point>> segmentsCleaned;
-        segmentsCleaned = RemoveSimilarContours(trueContours);
-
-        // cv::Mat joinedContours = this->currentImageCv->clone();
-        // i = 0;
-        // for (auto segment : segmentsCleaned)
+        // int i = 0;
+        // cv::Mat trueContoursRaw = this->currentImageCv->clone();
+        // for (auto segment : trueContours)
         // {
-        //     cv::polylines(joinedContours, segment, false, colours[i], 3);
-        //     cv::putText(joinedContours, 
+        //     cv::polylines(trueContoursRaw, segment, false, colours[i], 3);
+        //     cv::putText(trueContoursRaw, 
         //         cv::String(std::to_string(i)), 
         //         segment[0],
         //         cv::FONT_HERSHEY_DUPLEX,
-        //         fontScale,
+        //         1,
         //         colours[i]
         //     );
         //     i++;
         // }
-        // cv::imshow("joined contours", joinedContours);
+        // cv::imshow("true contours raw", trueContoursRaw);
+
+        //remove duplicates
+        std::vector<std::vector<cv::Point>> segmentsCleaned;
+        segmentsCleaned = RemoveSimilarContours(trueContours);
 
         trueContours = segmentsCleaned;
+
+        int i = 0;
+        for (auto segment : trueContours)
+        {
+            cv::polylines(trueContoured, segment, false, colours[i], 3);
+            cv::putText(trueContoured, 
+                cv::String(std::to_string(i)), 
+                segment[0],
+                cv::FONT_HERSHEY_DUPLEX,
+                1,
+                colours[i]
+            );
+            i++;
+        }
+        cv::imshow("true contours cleaned", trueContoured);
 
         // find pixel to mm ratio from lamp width
         if (this->imageType == ImageType::XRAY)
@@ -894,8 +946,8 @@ bool LampImageAnalyser::SimplifyLampContours()
         }
         else
         {
-            this->lamp.lampWidth = 7.0;
-            this->lamp.pixelMmRatio = std::abs((startApex - endApex)) / this->lamp.lampWidth;
+            this->lamp.lampWidth  = this->standardLampWidth_mm;
+            this->lamp.pixelMmRatio = std::abs((startApex - endApex)) / this->standardLampWidth_mm;
         }
 
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
@@ -927,8 +979,9 @@ bool LampImageAnalyser::SimplifyLampContours()
             int xLeft = trueContours[i][indexCenter].x - pixels2mm;
             int xRight = trueContours[i][indexCenter].x + pixels2mm;
 
-            unsigned bestIdx_up(0), bestIdx_down(0);
-            unsigned bestAbs_up(10), bestAbs_down(10);// maximum tolerance to Y difference
+            int bestIdx_up(-1), bestIdx_down(-1);
+            // maximum tolerance to Y difference
+            unsigned bestAbs_up(this->lamp.pixelMmRatio * 0.5), bestAbs_down(this->lamp.pixelMmRatio*0.5);
             
             for (size_t j = 0; j < trueContours[i].size(); j++)
             {
@@ -954,12 +1007,28 @@ bool LampImageAnalyser::SimplifyLampContours()
                     }
                 }
             }
-            if (bestIdx_down > bestIdx_up)
+            if (bestIdx_down > bestIdx_up && bestIdx_up >= 0 && bestIdx_down > 0)
             {
                 std::vector<cv::Point> simple(trueContours[i].begin() + bestIdx_up, trueContours[i].begin() + bestIdx_down);
                 simples.push_back(simple);
             }
         }
+
+        i = 0;
+        cv::Mat simplesImg = this->currentImageCv->clone();
+        for (auto simple : simples)
+        {
+            cv::polylines(simplesImg, simple, false, colours[i], 3);
+            cv::putText(simplesImg, 
+                cv::String(std::to_string(i)), 
+                simple[0],
+                cv::FONT_HERSHEY_DUPLEX,
+                1,
+                colours[i]
+            );
+            i++;
+        }
+        cv::imshow("simples", simplesImg);
 
         if (simples.size() != 4)
         {
@@ -972,9 +1041,9 @@ bool LampImageAnalyser::SimplifyLampContours()
             cv::Mat drawn = this->currentImageCv->clone();
             for (size_t i = 0; i < this->lamp.lampContours.size(); ++i) 
             {
-                cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 1, cv::LINE_AA);
+                cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 3, cv::LINE_AA);
             }
-            // cv::imshow("lamp contours", drawn);
+            cv::imshow("lamp contours", drawn);
             *this->currentImageCv = std::move(drawn);
         }
         
@@ -1489,7 +1558,7 @@ void JoinSegmentsRecursive
             }
             
         }
-        if (!toJoin && !duplicate)
+        if (!toJoin)
         {
             jointVector.push_back(inputVector[i]);
             used[i] = true;
