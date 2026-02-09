@@ -52,6 +52,16 @@ cv::Scalar colours[] = {
     cv::Scalar(50, 50, 50)
 };
 
+
+void JoinSegmentsRecursive
+(
+    std::vector<std::vector<cv::Point>>& input, 
+    std::vector<std::vector<cv::Point>>& output, 
+    bool isSorted=false,
+    ImageType imgType = ImageType::XRAY,
+    cv::Point imgDim = cv::Point(2500, 2500)
+);
+
 void onMouse(int event, int x, int y, int flags, void* userdata)
 {
     if (event == cv::EVENT_LBUTTONDOWN && userdata)
@@ -127,23 +137,33 @@ cv::Mat pruneSpurs(const cv::Mat& thin255, int iterations = 10)
     return skel;
 }
 
-cv::Mat SobelFilter(cv::Mat& inputImg, double threshMultiplier, ImageType type)
+cv::Mat SobelFilter(const cv::Mat& inputImg, double threshMultiplier, ImageType type)
 {
     cv::Mat imgBlur;
     //cv::blur(imgGray, imgBlur, cv::Size(10,10));
-    cv::medianBlur(inputImg, imgBlur, 15);
+    if (type != ImageType::PHOTO)
+    {
+        cv::medianBlur(inputImg, imgBlur, 15);
+    }
+    else
+    {
+        imgBlur = inputImg;
+    }
 
     cv::Mat normalized;
     cv::normalize(imgBlur, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    cv::threshold(normalized, normalized, 225, 255, cv::THRESH_TRUNC);
-    cv::normalize(normalized, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    
-    cv::GaussianBlur(normalized, imgBlur, cv::Size(5,5), 0, 0);
+    if (type == ImageType::XRAY)
+    {
+        cv::threshold(normalized, normalized, 225, 255, cv::THRESH_TRUNC);
+        cv::normalize(normalized, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        
+        cv::GaussianBlur(normalized, normalized, cv::Size(5,5), 0, 0);
+    }
 
     // SOBEL edge detection
     cv::Mat sobelx, sobely, gradient;
-    cv::Sobel(imgBlur, sobelx, CV_64F, 1, 0, 3);
-    cv::Sobel(imgBlur, sobely, CV_64F, 0, 1, 3); 
+    cv::Sobel(normalized, sobelx, CV_64F, 1, 0, 3);
+    cv::Sobel(normalized, sobely, CV_64F, 0, 1, 3); 
     cv::magnitude(sobelx, sobely, gradient);
     cv::Mat gradient_abs;
     cv::convertScaleAbs(gradient, gradient_abs);  
@@ -152,22 +172,34 @@ cv::Mat SobelFilter(cv::Mat& inputImg, double threshMultiplier, ImageType type)
     cv::normalize(gradient_abs, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
 
     cv::Mat thresh1;
-    double thresholdLow = type == ImageType::XRAY ? 128 : 200;
-
-    cv::threshold(normalized, thresh1, thresholdLow, 255, cv::THRESH_TOZERO_INV);
-    cv::normalize(thresh1, thresh1, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-  
-    cv::imshow("thresh1", thresh1);
+    if (type == ImageType::XRAY)
+    {
+        cv::threshold(normalized, thresh1, 128, 255, cv::THRESH_TOZERO_INV);
+        cv::normalize(thresh1, thresh1, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    }
+    else
+    {
+        thresh1 = normalized;
+    }
+    //cv::imshow("thresh1", thresh1);
 
     cv::Mat edgesMask;
 
     // OTSU ALGO
     int otsuthresh = cv::threshold(thresh1, edgesMask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU | cv::THRESH_DRYRUN);
     cv::threshold(thresh1, edgesMask, otsuthresh * threshMultiplier, 255, cv::THRESH_BINARY);
-    cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_CLOSE,
+    // if (type != ImageType::PHOTO)
+    // {
+        cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_CLOSE,
                     cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7,7)));
-
-    cv::imshow("otsuBin", edgesMask);
+    // }
+    // else
+    // {
+    //     cv::morphologyEx(edgesMask, edgesMask, cv::MORPH_CLOSE,
+    //         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3)));
+        
+    // }
+    //cv::imshow("otsuBin", edgesMask);
 
     return edgesMask;
 }
@@ -181,9 +213,6 @@ std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultip
     cv::Mat edgesMask; 
     edgesMask = SobelFilter(imgGray, threshMultiplier, type);
     //cv::imshow("sobel result", edgesMask);
-
-    // edgesMask = MorphGradDetection(imgGray, 5, 20);
-    // cv::imshow("morph grad result 5", edgesMask);
 
     // THINNING
     cv::Mat thinEdges;
@@ -209,6 +238,14 @@ std::vector<std::vector<cv::Point>> GetContours(cv::Mat img, double threshMultip
             continue;
         }
         cv::polylines(tracedImg, traced[i], false, coloursRandom[i]);
+        double fontScale = 1;
+        cv::putText(tracedImg, 
+            cv::String(std::to_string(i)), 
+            traced[0][0],
+            cv::FONT_HERSHEY_DUPLEX,
+            fontScale,
+            coloursRandom[i]
+        );
     }
     cv::imshow("traced lamp", tracedImg);
 
@@ -251,31 +288,31 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
                 //retry!
                 if (!success)
                 {
-                    double threshMultipliers[] = 
-                    {
-                        sobelThreshMultiplierDefault - 0.1,
-                        sobelThreshMultiplierDefault - 0.15,
-                        sobelThreshMultiplierDefault - 0.2,
-                        sobelThreshMultiplierDefault - 0.25,
-                        sobelThreshMultiplierDefault - 0.3,
-                        sobelThreshMultiplierDefault - 0.35,
-                        sobelThreshMultiplierDefault - 0.4
+                    // double threshMultipliers[] = 
+                    // {
+                    //     sobelThreshMultiplierDefault - 0.1,
+                    //     sobelThreshMultiplierDefault - 0.15,
+                    //     sobelThreshMultiplierDefault - 0.2,
+                    //     sobelThreshMultiplierDefault - 0.25,
+                    //     sobelThreshMultiplierDefault - 0.3,
+                    //     sobelThreshMultiplierDefault - 0.35,
+                    //     sobelThreshMultiplierDefault - 0.4
 
-                    };
-                    size_t tries = sizeof(threshMultipliers)/sizeof(double) - 1;
+                    // };
+                    // size_t tries = sizeof(threshMultipliers)/sizeof(double) - 1;
                     
-                    int indexMultiplier = 0;
-                    for (int i = 0; i < tries; ++i)
-                    {
-                        this->contours = GetContours(img, threshMultipliers[indexMultiplier], imageType);
-                        success = this->SimplifyLampContours();
-                        qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
-                        if ( success || indexMultiplier == tries)
-                        {
-                            break;
-                        }
-                        indexMultiplier ++;
-                    }
+                    // int indexMultiplier = 0;
+                    // for (int i = 0; i < tries; ++i)
+                    // {
+                    //     this->contours = GetContours(img, threshMultipliers[indexMultiplier], imageType);
+                    //     success = this->SimplifyLampContours();
+                    //     qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
+                    //     if ( success || indexMultiplier == tries)
+                    //     {
+                    //         break;
+                    //     }
+                    //     indexMultiplier ++;
+                    // }
                }
                 
                 if (success)
@@ -337,14 +374,15 @@ void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
         1                   // thickness
     );
     
+    double fontScale = this->currentImageCv->cols / 700;
     cv::String coordinates = cv::String(std::format("({},{})", imgPt.x(), imgPt.y()));
-    cv::putText(drawn, 
-                coordinates, 
-                cv::Point(imgPt.x() + 5, imgPt.y() + 5),
-                cv::FONT_HERSHEY_PLAIN,
-                0.9,
-                cv::Scalar(255, 0, 0)
-    );
+    // cv::putText(drawn, 
+    //             coordinates, 
+    //             cv::Point(imgPt.x() + 5, imgPt.y() + 5),
+    //             cv::FONT_HERSHEY_PLAIN,
+    //             fontScale,
+    //             cv::Scalar(255, 0, 0)
+    // );
 
     *this->currentImageCv = std::move(drawn);
 
@@ -365,13 +403,14 @@ void LampImageAnalyser::PaintVertice(const cv::Point& imgPt)
     );
     
     cv::String coordinates = cv::String(std::format("({},{})", imgPt.x, imgPt.y));
-    cv::putText(drawn, 
-                coordinates, 
-                cv::Point(imgPt.x + 5, imgPt.y + 5),
-                cv::FONT_HERSHEY_PLAIN,
-                0.9,
-                cv::Scalar(255, 0, 0)
-    );
+    double fontScale = this->currentImageCv->cols / 700;
+    // cv::putText(drawn, 
+    //             coordinates, 
+    //             cv::Point(imgPt.x + 5, imgPt.y + 5),
+    //             cv::FONT_HERSHEY_DUPLEX,
+    //             fontScale,
+    //             cv::Scalar(255, 0, 0)
+    // );
 
     *this->currentImageCv = std::move(drawn);
 
@@ -434,6 +473,7 @@ static std::vector<cv::Point> resampleByArcLen(const std::vector<cv::Point>& P, 
     }
     return R;
 }
+
 static void drawPolylineF(cv::Mat& img,
                           const std::vector<cv::Point2f>& poly,
                           bool closed,
@@ -605,126 +645,32 @@ void CutCloseToCenter
     output = divided;
 }
 
-void DivideLongContours(const std::vector<std::vector<cv::Point>>& input, std::vector<std::vector<cv::Point>> &output)
-{
-    std::vector<std::vector<cv::Point>> divided;
-
-    for (std::vector<cv::Point> curve : input)
-    {   
-        int derivStep = 5;
-        int refineRad = 10;
-        int confirmK = 20;
-        int n = curve.size();
-        std::vector<int> extrema;
-        extrema.push_back(0);
-        if (n > 3)
-        {
-            auto slopeSignAt = [&](int i) -> int 
-            {
-                int a = std::max(0, i - derivStep);
-                int b = std::min(n - 1, i + derivStep);
-                double s = curve[b].y - curve[a].y;
-                return sign(s);
-            };
-
-            int i0 = 0;
-            int prev = 0;
-            // see if the slope changes anywhere along the curve
-            while (i0 < n && (prev = slopeSignAt(i0)) == 0) 
-            {
-                ++i0;
-            }
-            // reached size, so it is already monotonous
-            if (i0 == n) 
-            {
-                divided.push_back(curve);
-                continue;
-            }
-            
-            for (int i = i0 + 1; i < n; ++i) 
-            {
-                int s = slopeSignAt(i);
-                if (s == 0 || s == prev) 
-                {
-                    continue;
-                }
-
-                // Sign flip: + -> - is a local max, - -> + is a local min.
-                int a = std::max(0, i - refineRad);
-                int b = std::min(n - 1, i + refineRad);
-
-                int best = i;
-                if (prev == +1 && s == -1) 
-                {
-                    // local maximum: refine to max Y
-                    double bestY = curve[i].y;
-                    for (int k = a; k <= b; ++k) 
-                    {
-                        if (curve[k].y > bestY) 
-                        { 
-                            bestY = curve[k].y; 
-                            best = k; 
-                        }
-                    }
-                } 
-                else if (prev == -1 && s == +1) 
-                {
-                    // local minimum: refine to min Y
-                    double bestY = curve[i].y;
-                    for (int k = a; k <= b; ++k) 
-                    {
-                        if (curve[k].y < bestY) 
-                        { 
-                            bestY = curve[k].y; 
-                            best = k; 
-                        }
-                    }
-                }
-
-                // Avoid duplicates / near-duplicates
-                if (std::abs(best - extrema.back()) > 50)
-                {
-                    auto segmentBegin = extrema.back();
-                    extrema.push_back(best);
-                    std::vector<cv::Point> segment(curve.begin() + segmentBegin, curve.begin() + extrema.back());
-                    if (segment.size() > 100)
-                    {
-                        divided.push_back(segment);
-                    }
-                }
-
-                prev = s;
-            }
-        }
-    }
-    output = divided;
-}
-
 // TODO: larger value of tolerance for larger images
 // Find indexes of similar contours
 // Returns a vector of pairs where each pair contains indexes of similar contours
 std::vector<std::vector<cv::Point>> RemoveSimilarContours
 (
-    const std::vector<std::vector<cv::Point>>& contours,
-    double distanceTolerance = 30.0
+    const std::vector<std::vector<cv::Point>>& contours
 )
 {
     std::vector<std::vector<cv::Point>> curves = contours;
     std::vector<std::pair<size_t, size_t>> similarPairs;
     std::vector<std::vector<cv::Point>> cleanedContours;
     
+    double distanceTolerance = 10;
+
     for (size_t i = 0; i < curves.size(); ++i)
     {
         std::vector<cv::Point> approx;
         double epsilon = 4.0; // Adjust for more/less smoothing
         cv::approxPolyDP(curves[i], approx, epsilon, false);
-        curves[i] = approx;
         // Resample curve with equally distributed points
-        curves[i] = resampleByArcLen(curves[i], 2.0f, false);
+        curves[i] = resampleByArcLen(approx, 2.0f, false);
     }
 
     for (size_t i = 0; i < curves.size(); ++i)
     {
+        distanceTolerance = cv::arcLength(curves[i], false) * 0.1;
         for (size_t j = i + 1; j < curves.size(); ++j)
         {
 
@@ -801,25 +747,25 @@ bool LampImageAnalyser::SimplifyLampContours()
         std::vector<std::vector<cv::Point>> trueContours;
         int startApex(0), endApex(0);
 
-        std::vector<std::vector<cv::Point>> segments;
+        std::vector<std::vector<cv::Point>> segmentsRaw;
 
         bool isVertical = false;
         // split contours into monotonous segments
         //DivideLongContours(this->contours, segments);
 
         // cut points far from center (easier than divide into monotonous parts at extrema)
-        CutCloseToCenter(this->contours, segments, this->lamp.lampCenter, 2.5*this->lamp.pixelMmRatio);
+        CutCloseToCenter(this->contours, segmentsRaw, this->lamp.lampCenter, 2.5*this->lamp.pixelMmRatio);
 
-        for (size_t i = 0; i < segments.size(); i++)
+        for (size_t i = 0; i < segmentsRaw.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
             // TODO: better method?
-            if (segments[i].size() < 100)
+            if (segmentsRaw[i].size() < 100)
             {  
                 continue;
             }
             
-            std::vector<cv::Point> contour = segments[i];
+            std::vector<cv::Point> contour = segmentsRaw[i];
 
             int verticalDiff = FindMinMaxPoint(contour, true, false).y - FindMinMaxPoint(contour, false, false).y;
             int horizontalDiff = FindMinMaxPoint(contour, true, true).x - FindMinMaxPoint(contour, false, true).x;
@@ -874,28 +820,55 @@ bool LampImageAnalyser::SimplifyLampContours()
 
             trueContours.push_back(contour);
         }
-        //remove duplicates
-        std::vector<std::vector<cv::Point>> segmentsCleaned;
-        segmentsCleaned = RemoveSimilarContours(trueContours);
+        // double fontScale = this->currentImageCv->cols / 700;
         // int i = 0;
-        // for (auto segment : segmentsCleaned)
+        // for (auto segment : trueContours)
         // {
-        //     cv::polylines(trueContoured, segment, false, colours[i]);
+        //     cv::polylines(trueContoured, segment, false, colours[i], 3);
         //     cv::putText(trueContoured, 
         //         cv::String(std::to_string(i)), 
         //         segment[0],
-        //         cv::FONT_HERSHEY_SIMPLEX,
-        //         0.5,
+        //         cv::FONT_HERSHEY_DUPLEX,
+        //         fontScale,
         //         colours[i]
         //     );
         //     i++;
         // }
-        //cv::imshow("sorted contours", trueContoured);
+        // cv::imshow("true contours", trueContoured);
 
+        //remove duplicates
+        std::vector<std::vector<cv::Point>> segmentsCleaned;
+        segmentsCleaned = RemoveSimilarContours(trueContours);
         trueContours = segmentsCleaned;
 
+        int i = 0;
+        cv::Mat cleanedContours = this->currentImageCv->clone();
+        for (auto segment : trueContours)
+        {
+            cv::polylines(cleanedContours, segment, false, colours[i], 3);
+            cv::putText(cleanedContours, 
+                cv::String(std::to_string(i)), 
+                segment[0],
+                cv::FONT_HERSHEY_DUPLEX,
+                1,
+                colours[i]
+            );
+            i++;
+        }
+        cv::imshow("true contours CLEANED", cleanedContours);
+
         // find pixel to mm ratio from lamp width
-        this->lamp.lampWidth = std::abs((startApex - endApex)) / this->lamp.pixelMmRatio;
+        if (this->imageType == ImageType::XRAY)
+        {
+            this->lamp.pixelMmRatio = this->pxToMmDefaultXray;
+            this->lamp.lampWidth = std::abs((startApex - endApex)) / this->lamp.pixelMmRatio;
+        }
+        else
+        {
+            this->lamp.lampWidth = 7.0;
+            this->lamp.pixelMmRatio = std::abs((startApex - endApex)) / this->lamp.lampWidth;
+        }
+
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
         for (size_t i = 0; i < trueContours.size(); i++)
@@ -1145,21 +1118,22 @@ void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QP
         
         cv::Mat drawn = this->currentImageCv->clone();
 
-        qDebug() << "Curve " << i << ": fitR=" << radius << "@ (" << center.x << "," << center.y;
+        // qDebug() << "Curve " << i << ": fitR=" << radius << "@ (" << center.x << "," << center.y;
 
-        std::string radiusStr(std::format("({}) R={:.1f} px", i + 1, radius));
-        std::string curveNumber(std::format("({})", i + 1));
-        radiiString += QString::fromStdString(radiusStr) + "; ";
+        // std::string radiusStr(std::format("({}) R={:.1f} px", i + 1, radius));
+        // std::string curveNumber(std::format("({})", i + 1));
+        // radiiString += QString::fromStdString(radiusStr) + "; ";
         
-        cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
+        //cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
 
-        cv::putText(*this->currentImageCv, 
-                cv::String(curveNumber), 
-                coordinates,
-                cv::FONT_HERSHEY_SIMPLEX,
-                0.5,
-                colours[i]
-        );
+        // double fontScale = this->currentImageCv->cols / 1000;
+        // cv::putText(*this->currentImageCv, 
+        //         cv::String(curveNumber), 
+        //         coordinates,
+        //         cv::FONT_HERSHEY_DUPLEX,
+        //         fontScale,
+        //         colours[i]
+        // );
 
         PaintCircleCenter(cv::Point(center.x, center.y), i + 1, colours[i]);
 
@@ -1337,33 +1311,36 @@ QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPo
     return QPair(distance, angle);
 }
 
-
 void JoinSegmentsRecursive
 (
     std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>>& output, 
-    bool isSorted=false,
-    ImageType imgType = ImageType::XRAY,
-    cv::Point imgDim = cv::Point(2500, 2500)
+    bool isSorted,
+    ImageType imgType,
+    cv::Point imgDim
 )
 {
     std::vector<std::vector<cv::Point>> inputVector = input;
     std::vector<std::vector<cv::Point>> jointVector;
     std::vector<std::vector<cv::Point>> outputVector;
     
+    bool isVertical;
     // first sort for easier comparison
     if (!isSorted)
     {
+
         for (auto& segment : inputVector)
         {
-            std::sort(
-                        segment.begin(), 
-                        segment.end(), 
-                        [](const cv::Point& a, const cv::Point& b) 
-                        {
-                            return a.y < b.y;
-                        }
-                    );
+            int verticalDiff = FindMinMaxPoint(segment, true, false).y - FindMinMaxPoint(segment, false, false).y;
+            int horizontalDiff = FindMinMaxPoint(segment, true, true).x - FindMinMaxPoint(segment, false, true).x;
+            if (horizontalDiff < verticalDiff)
+            {
+                isVertical = true;
+            }
+
+            std::sort(segment.begin(), segment.end(), [isVertical](const cv::Point& a, const cv::Point& b) {
+                return (isVertical ? a.y < b.y : a.x < b.x);
+            });
         }
     }
 
@@ -1465,7 +1442,7 @@ void JoinSegmentsRecursive
                 }
                 else
                 {
-                    qDebug() << "intersection far, but shouldn't be!";
+                    //qDebug() << "intersection far, but shouldn't be!";
                     continue;
                 }
                 

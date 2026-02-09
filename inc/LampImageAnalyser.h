@@ -105,10 +105,11 @@ private:
         cv::Point2f lampCenter = undeterminedPoint;
         double electrodesDistancePx = 0;
         double electrodesAngle = 0.0f;
-        const double pixelMmRatio = 55.5; // const derived from statistics
+        double pixelMmRatio = 55.5; // const derived from statistics ONLY FOR XRAY!
     };
 
     const double standardLampWidth_mm = 7.00;
+    const double pxToMmDefaultXray = 55.5;
 
     ImageType imageType = ImageType::XRAY;
 
