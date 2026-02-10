@@ -112,7 +112,8 @@ void MainWindow::PrintLampResults
 (
     std::vector<QPoint> centers, 
     std::vector<float> radii, 
-    QPair<double, double> thickness
+    QPair<double, double> thickness,
+    double lampWidth
 )
 {
     QString resultsString;
@@ -120,9 +121,10 @@ void MainWindow::PrintLampResults
     {
         resultsString += QString("R(%1)=%2 mm at (%3, %4);\n\r").arg(i+1).arg(radii[i], 0, 'f', 2).arg(centers[i].x()).arg(centers[i].y());
     }
-    resultsString += QString("\n\rLeft wall %1 mm, right wall %2 mm")
+    resultsString += QString("\n\rLeft wall %1 mm, right wall %2 mm\n\r")
                             .arg(thickness.first, 0, 'f', 2)
                             .arg(thickness.second, 0, 'f', 2);
+    resultsString += QString("Lamp width: %1 mm\n\r").arg(lampWidth, 0, 'f', 2);
     ui->labelLampResults->setText(resultsString);
 }
 

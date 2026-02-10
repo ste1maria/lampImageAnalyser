@@ -14,8 +14,6 @@
 #include <algorithm>
 #include <numeric>
 
-const int centerApproxTolerance = 30; // px
-
 std::vector<cv::Scalar> coloursRandom = {
     { 231,  72,  28},
     {  57, 203, 155},
@@ -553,67 +551,71 @@ typedef enum
 } Orientation;
 
 // to find the curve apex
-int findCurveApex(std::vector<cv::Point> &curve, Orientation orientation, cv::Point lampCenter)
+int findCurveApex(std::vector<cv::Point> &curve, bool isVertical, cv::Point lampCenter, double tolerance)
 {
     // apex at max or min x and approximately at lampCenterY
-    int max_x = 0;
-    int min_x = 10000;    
+    int right_x = 0;
+    int left_x = 10000;    
 
-    int max_y = 0;
-    int min_y = 10000;
+    int bottom_y = 0;
+    int top_y = 10000;
 
     int apexIndex = 0;
-    int minDiff = centerApproxTolerance;
+    int minDiffCenterLine = tolerance;
 
-    if (orientation == Orientation::AMBIG)
-    {
-        return 0;
-    }
     for (size_t i = 0; i < curve.size(); i++)
     {
-        int diff;
-        if ((orientation == Orientation::RIGHT) || (orientation == Orientation::LEFT)) 
+        int diffFromCenterLine;
+        if (isVertical) 
         {
-            diff = std::abs(lampCenter.y - curve[i].y);
+            diffFromCenterLine = std::abs(lampCenter.y - curve[i].y);
         }
         else 
         {
-
+            diffFromCenterLine = std::abs(lampCenter.x - curve[i].x);
         }
-        diff = std::abs(lampCenter.x - curve[i].x);
 
-        if (diff <= minDiff)
+        if (diffFromCenterLine <= minDiffCenterLine)
         {
-            if (orientation == Orientation::RIGHT)
+            bool isLeftTop = isVertical ? curve[i].x < lampCenter.x
+                                        : curve[i].y < lampCenter.y;
+        
+            if (isLeftTop)
             {
-                if (curve[i].x <= min_x)
+                if (isVertical)
                 {
-                    min_x = curve[i].x;
-                    apexIndex = i;
+                    if (curve[i].x <= left_x)
+                    {
+                        left_x = curve[i].x;
+                        apexIndex = i;
+                    }
+                }
+                else
+                {
+                    if (curve[i].y <= top_y)
+                    {
+                        top_y = curve[i].y;
+                        apexIndex = i;
+                    }
                 }
             }
-            else if (orientation == Orientation::LEFT)
+            else
             {
-                if (curve[i].x >= max_x)
+                if (isVertical)
                 {
-                    max_x = curve[i].x;
-                    apexIndex = i;
+                    if (curve[i].x >= right_x)
+                    {
+                        right_x = curve[i].x;
+                        apexIndex = i;
+                    }
                 }
-            }
-            else if (orientation == Orientation::UP)
-            {
-                if (curve[i].y <= min_y)
+                else
                 {
-                    min_y = curve[i].y;
-                    apexIndex = i;
-                }
-            }
-            else if (orientation == Orientation::DOWN)
-            {
-                if (curve[i].y >= max_y)
-                {
-                    max_y = curve[i].y;
-                    apexIndex = i;
+                    if (curve[i].y >= bottom_y)
+                    {
+                        bottom_y = curve[i].y;
+                        apexIndex = i;
+                    }
                 }
             }
         }
@@ -781,6 +783,7 @@ bool LampImageAnalyser::SimplifyLampContours()
     {
         std::vector<std::vector<cv::Point>> simples;
         std::vector<std::vector<cv::Point>> trueContours;
+
         int startApex(0), endApex(0);
 
         std::vector<std::vector<cv::Point>> segmentsRaw;
@@ -796,47 +799,6 @@ bool LampImageAnalyser::SimplifyLampContours()
             2.5*this->lamp.electrodesDistancePx, 
             isVertical
         );
-
-        // cv::Mat cutContours = this->currentImageCv->clone();
-        // int i = 0;
-        // for (auto segment : segmentsRaw)
-        // {
-        //     cv::polylines(cutContours, segment, false, colours[i], 3);
-        //     cv::putText(cutContours, 
-        //         cv::String(std::to_string(i)), 
-        //         segment[0],
-        //         cv::FONT_HERSHEY_DUPLEX,
-        //         1,
-        //         colours[i]
-        //     );
-        //     i++;
-        // }
-        
-        // cv::imshow("cut contours", cutContours);
-
-        // std::vector<std::vector<cv::Point>> segments;
-        // if (segmentsRaw.size() > 4)
-        // {
-        //     double toleranceLen = 0.05;
-        //     JoinSegmentsRecursive(segmentsRaw, segments, toleranceLen);
-        // }
-
-        // cv::Mat jointedContours = this->currentImageCv->clone();
-        // int j = 0;
-        // for (auto segment : segments)
-        // {
-        //     cv::polylines(jointedContours, segment, false, colours[i], 3);
-        //     cv::putText(jointedContours, 
-        //         cv::String(std::to_string(i)), 
-        //         segment[0],
-        //         cv::FONT_HERSHEY_DUPLEX,
-        //         1,
-        //         colours[i]
-        //     );
-        //     i++;
-        // }
-        
-        // cv::imshow("joined contours", jointedContours);
 
         for (size_t i = 0; i < segmentsRaw.size(); i++)
         {
@@ -875,76 +837,11 @@ bool LampImageAnalyser::SimplifyLampContours()
                 continue;
             }
 
-            int apexIdx = findCurveApex(contour, orient, this->lamp.lampCenter);
-            
-            this->lamp.wallsApexes.push_back(contour[apexIdx]);
-
-            int checkApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
-            if (startApex == 0 && endApex == 0)
-            {
-                startApex = checkApex;
-                endApex = checkApex;
-            }
-            else if (checkApex < startApex)
-            {
-                startApex = isVertical ? checkApex : contour[apexIdx].y;
-            }
-            else if (checkApex > endApex)
-            {
-                endApex = isVertical ? checkApex : contour[apexIdx].y;
-            }
-
             trueContours.push_back(contour);
         }
 
-        // i = 0;
-        // cv::Mat trueContoursRaw = this->currentImageCv->clone();
-        // for (auto segment : trueContours)
-        // {
-        //     cv::polylines(trueContoursRaw, segment, false, colours[i], 3);
-        //     cv::putText(trueContoursRaw, 
-        //         cv::String(std::to_string(i)), 
-        //         segment[0],
-        //         cv::FONT_HERSHEY_DUPLEX,
-        //         1,
-        //         colours[i]
-        //     );
-        //     i++;
-        // }
-        // cv::imshow("true contours raw", trueContoursRaw);
-
         //remove duplicates
-        std::vector<std::vector<cv::Point>> segmentsCleaned;
-        segmentsCleaned = RemoveSimilarContours(trueContours);
-
-        trueContours = segmentsCleaned;
-
-        // int j = 0;
-        // for (auto segment : trueContours)
-        // {
-        //     cv::polylines(trueContoured, segment, false, colours[j], 3);
-        //     cv::putText(trueContoured, 
-        //         cv::String(std::to_string(j)), 
-        //         segment[0],
-        //         cv::FONT_HERSHEY_DUPLEX,
-        //         1,
-        //         colours[j]
-        //     );
-        //     j++;
-        // }
-        // cv::imshow("true contours cleaned", trueContoured);
-
-        // find pixel to mm ratio from lamp width
-        if (this->imageType == ImageType::XRAY)
-        {
-            this->lamp.pixelMmRatio = this->pxToMmDefaultXray;
-            this->lamp.lampWidth = std::abs((startApex - endApex)) / this->lamp.pixelMmRatio;
-        }
-        else
-        {
-            this->lamp.lampWidth  = this->standardLampWidth_mm;
-            this->lamp.pixelMmRatio = std::abs((startApex - endApex)) / this->standardLampWidth_mm;
-        }
+        trueContours = RemoveSimilarContours(trueContours);
 
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
@@ -952,6 +849,7 @@ bool LampImageAnalyser::SimplifyLampContours()
         {
             // find point on curve that lies approximately on the center horizontal line of the lamp
             int indexCenter = 0;
+            double centerApproxTolerance = this->lamp.electrodesDistancePx * 0.5;
             unsigned bestAbsCenter(centerApproxTolerance), bestIdxCenter(0);
             for (size_t j = 0; j < trueContours[i].size(); ++j)
             {
@@ -995,7 +893,6 @@ bool LampImageAnalyser::SimplifyLampContours()
                 {
                     int d_down = isVertical ? std::abs(trueContours[i][j].y - y_down)
                                                 : std::abs(trueContours[i][j].x - xRight) ;
-
                     if (d_down < bestAbs_down)
                     {
                         bestAbs_down = d_down;
@@ -1016,6 +913,30 @@ bool LampImageAnalyser::SimplifyLampContours()
         }
         else
         {
+            for (auto contour : simples)
+            {
+                double centerApproxTolerance = this->lamp.electrodesDistancePx * 0.5;
+                int apexIdx = findCurveApex(contour, this->lamp.isVertical, this->lamp.lampCenter, centerApproxTolerance);
+                
+                this->lamp.wallsApexes.push_back(contour[apexIdx]);
+
+                int checkApex = isVertical ? contour[apexIdx].x : contour[apexIdx].y;
+                if (startApex == 0 && endApex == 0)
+                {
+                    startApex = checkApex;
+                    endApex = checkApex;
+                }
+                else if (checkApex < startApex)
+                {
+                    startApex = isVertical ? checkApex : contour[apexIdx].y;
+                }
+                else if (checkApex > endApex)
+                {
+                    endApex = isVertical ? checkApex : contour[apexIdx].y;
+                }
+            }
+
+            this->lamp.lampWidth = std::abs((startApex - endApex)) / this->lamp.pixelMmRatio;
             this->lamp.lampContours = simples;
 
             cv::Mat drawn = this->currentImageCv->clone();
@@ -1917,6 +1838,10 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                 apexes.second = apexesVect[1];
                 
                 auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
+                if (std::abs(angle) > 45)
+                {
+                    angle = 90 - std::abs(angle);
+                }
                 this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
 
                 this->lamp.electrodesDistancePx = distance;
@@ -1952,27 +1877,40 @@ QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
 
     if (!(this->lamp.wallsApexes.empty()))
     {
-        std::vector<cv::Point> edgesLeft, edgesRight;
+        std::vector<cv::Point> edgesLeftTop, edgesRightBottom;
         for (cv::Point apex : this->lamp.wallsApexes)
         {
-            if (std::abs(this->lamp.lampCenter.y - apex.y) > centerApproxTolerance)
+            double distanceToCenter = this->lamp.isVertical ? std::abs(this->lamp.lampCenter.y - apex.y)
+                                                            : std::abs(this->lamp.lampCenter.x - apex.x);
+            double centerApproxTolerance = this->lamp.electrodesDistancePx * 0.5;
+            if (distanceToCenter > centerApproxTolerance)
             {
                 continue;
             }
-            if (apex.x < this->lamp.lampCenter.x && edgesLeft.size() < 2)
+            bool leftOrTop;
+            if (this->lamp.isVertical)
             {
-                edgesLeft.push_back(apex);
+                leftOrTop = apex.x < this->lamp.lampCenter.x;
             }
-            else if (apex.x > this->lamp.lampCenter.x && edgesRight.size() < 2)
+            else
             {
-                edgesRight.push_back(apex);
+                leftOrTop = apex.y < this->lamp.lampCenter.y;               
+            }
+
+            if (leftOrTop && edgesLeftTop.size() < 2)
+            {
+                edgesLeftTop.push_back(apex);
+            }
+            else if (!leftOrTop && edgesRightBottom.size() < 2)
+            {
+                edgesRightBottom.push_back(apex);
             }
         }
 
-        if (edgesLeft.size() == 2 && edgesRight.size() == 2)
+        if (edgesLeftTop.size() == 2 && edgesRightBottom.size() == 2)
         {
-            auto [wallLeftPx, angleLeft] = CalculateDistanceAngle(edgesLeft[0], edgesLeft[1]);
-            auto [wallRightPx, angleRight] = CalculateDistanceAngle(edgesRight[0], edgesRight[1]);
+            auto [wallLeftPx, angleLeft] = CalculateDistanceAngle(edgesLeftTop[0], edgesLeftTop[1]);
+            auto [wallRightPx, angleRight] = CalculateDistanceAngle(edgesRightBottom[0], edgesRightBottom[1]);
 
             double ratio = this->lamp.pixelMmRatio;
 
@@ -1989,6 +1927,8 @@ void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
 {
     bool success = true;
     this->lamp.ResetLampModel();
+    // TODO: ratio determination from photo scale
+    this->lamp.pixelMmRatio = this->imageType == ImageType::XRAY ? pxToMmDefaultXray : 850/7;
     this->fullResultsString = "";
     success = this->ProcessElectrodes(imgToProcess);
     if (success)
@@ -2022,8 +1962,16 @@ void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
             
             fullResultsString += QString::number(this->lamp.lampWidth, 'f', 2) + "\r\n";
 
-            emit ElectrodesProcessed(coordElectrodeFirst, coordElectrodeSecond, electrodesDistanceMm, electrodesAngle);
-            emit LampWallsProcessed(this->lamp.wallsCenters, this->lamp.wallsRadii, this->lamp.wallsThickness);
+            emit ElectrodesProcessed(coordElectrodeFirst, 
+                                    coordElectrodeSecond, 
+                                    electrodesDistanceMm,
+                                    electrodesAngle
+                                    );
+            emit LampWallsProcessed(this->lamp.wallsCenters, 
+                                    this->lamp.wallsRadii, 
+                                    this->lamp.wallsThickness, 
+                                    this->lamp.lampWidth
+                                    );
 
             emit ImageProcessed(this->currentImageCv);
         }

@@ -24,7 +24,8 @@ public slots:
     void PrintLampResults
     (   std::vector<QPoint> centers, 
         std::vector<float> radii, 
-        QPair<double, double> thickness
+        QPair<double, double> thickness,
+        double lampWidth
     );
 
     void PrintElectrodes
