@@ -312,82 +312,78 @@ bool LampImageAnalyser::ProcessLampWalls(QImage& inputImage)
         this->contours.clear();
         this->contours = GetContours(img, sobelThreshMultiplierDefault, this->imageType);
 
-        if (this->contours.size() < 4)
+
+        if (this->lamp.lampCenter == this->lamp.undeterminedPoint)
         {
-            success = false;
-        }
-        else 
-        {
-            if (this->lamp.lampCenter == this->lamp.undeterminedPoint)
+            bool result = this->CalculateElectrodes(inputImage);
+            if (result == false)
             {
-                bool result = this->CalculateElectrodes(inputImage);
-                if (result == false)
+                success = false;
+            }
+        }
+        if (success)
+        {
+            success = this->SimplifyLampContours();
+            
+            //retry!
+            if (!success)
+            {
+                double threshMultipliers[] = 
                 {
-                    success = false;
+                    sobelThreshMultiplierDefault - 0.1,
+                    sobelThreshMultiplierDefault - 0.15,
+                    sobelThreshMultiplierDefault - 0.2,
+                    sobelThreshMultiplierDefault - 0.25,
+                    sobelThreshMultiplierDefault - 0.3,
+                    sobelThreshMultiplierDefault - 0.35,
+                    sobelThreshMultiplierDefault - 0.4,
+                    sobelThreshMultiplierDefault - 0.45
+
+                };
+                size_t tries = sizeof(threshMultipliers)/sizeof(double);
+                
+                int indexMultiplier = 0;
+                for (int i = 0; i < tries; ++i)
+                {
+                    this->contours = GetContours(img, threshMultipliers[indexMultiplier], imageType);
+                    success = this->SimplifyLampContours();
+                    qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
+                    if ( success || indexMultiplier == tries)
+                    {
+                        break;
+                    }
+                    indexMultiplier ++;
                 }
             }
+            
             if (success)
             {
-                success = this->SimplifyLampContours();
-                
-                //retry!
-                if (!success)
+                std::vector<float> radii;
+                std::vector<QPoint> centers;
+                this->CalculateRadii(&radii, &centers);
+
+                std::vector<float> radiiMm;
+                for (float radius : radii)
                 {
-                    // double threshMultipliers[] = 
-                    // {
-                    //     sobelThreshMultiplierDefault - 0.1,
-                    //     sobelThreshMultiplierDefault - 0.15,
-                    //     sobelThreshMultiplierDefault - 0.2,
-                    //     sobelThreshMultiplierDefault - 0.25,
-                    //     sobelThreshMultiplierDefault - 0.3,
-                    //     sobelThreshMultiplierDefault - 0.35,
-                    //     sobelThreshMultiplierDefault - 0.4
-
-                    // };
-                    // size_t tries = sizeof(threshMultipliers)/sizeof(double) - 1;
-                    
-                    // int indexMultiplier = 0;
-                    // for (int i = 0; i < tries; ++i)
-                    // {
-                    //     this->contours = GetContours(img, threshMultipliers[indexMultiplier], imageType);
-                    //     success = this->SimplifyLampContours();
-                    //     qDebug() << "retry " << indexMultiplier << "multiplier:" << threshMultipliers[indexMultiplier];
-                    //     if ( success || indexMultiplier == tries)
-                    //     {
-                    //         break;
-                    //     }
-                    //     indexMultiplier ++;
-                    // }
-               }
-                
-                if (success)
-                {
-                    std::vector<float> radii;
-                    std::vector<QPoint> centers;
-                    this->CalculateRadii(&radii, &centers);
-
-                    std::vector<float> radiiMm;
-                    for (float radius : radii)
-                    {
-                        float radiusMm = 0;
-                        radiusMm = radius / this->lamp.pixelMmRatio;
-                        radiiMm.push_back(radiusMm);
-                    }
-
-                    QPair<double, double> lampWalls = this->CalculateWallThickness();
-                    this->lamp.wallsCenters = centers;
-                    this->lamp.wallsRadii = radiiMm;
-                    this->lamp.wallsThickness = lampWalls;
-                    
-                    //emit ImageProcessed(this->currentImageCv);
-                    // emit LampWallsProcessed(centers, radiiMm, lampWalls);
+                    float radiusMm = 0;
+                    radiusMm = radius / this->lamp.pixelMmRatio;
+                    radiiMm.push_back(radiusMm);
                 }
-                else
-                {
 
-                }
+                QPair<double, double> lampWalls = this->CalculateWallThickness();
+                this->lamp.wallsCenters = centers;
+                this->lamp.wallsRadii = radiiMm;
+                this->lamp.wallsThickness = lampWalls;
+                
+                //emit ImageProcessed(this->currentImageCv);
+                // emit LampWallsProcessed(centers, radiiMm, lampWalls);
+            }
+            else
+            {
+
             }
         }
+        
         if (!success)
         {
             emit WallsAnalysisFailed();
@@ -826,7 +822,7 @@ bool LampImageAnalyser::SimplifyLampContours()
         // }
 
         // cv::Mat jointedContours = this->currentImageCv->clone();
-        // i = 0;
+        // int j = 0;
         // for (auto segment : segments)
         // {
         //     cv::polylines(jointedContours, segment, false, colours[i], 3);
@@ -901,7 +897,7 @@ bool LampImageAnalyser::SimplifyLampContours()
             trueContours.push_back(contour);
         }
 
-        // int i = 0;
+        // i = 0;
         // cv::Mat trueContoursRaw = this->currentImageCv->clone();
         // for (auto segment : trueContours)
         // {
@@ -923,20 +919,20 @@ bool LampImageAnalyser::SimplifyLampContours()
 
         trueContours = segmentsCleaned;
 
-        int i = 0;
-        for (auto segment : trueContours)
-        {
-            cv::polylines(trueContoured, segment, false, colours[i], 3);
-            cv::putText(trueContoured, 
-                cv::String(std::to_string(i)), 
-                segment[0],
-                cv::FONT_HERSHEY_DUPLEX,
-                1,
-                colours[i]
-            );
-            i++;
-        }
-        cv::imshow("true contours cleaned", trueContoured);
+        // int j = 0;
+        // for (auto segment : trueContours)
+        // {
+        //     cv::polylines(trueContoured, segment, false, colours[j], 3);
+        //     cv::putText(trueContoured, 
+        //         cv::String(std::to_string(j)), 
+        //         segment[0],
+        //         cv::FONT_HERSHEY_DUPLEX,
+        //         1,
+        //         colours[j]
+        //     );
+        //     j++;
+        // }
+        // cv::imshow("true contours cleaned", trueContoured);
 
         // find pixel to mm ratio from lamp width
         if (this->imageType == ImageType::XRAY)
@@ -1014,22 +1010,6 @@ bool LampImageAnalyser::SimplifyLampContours()
             }
         }
 
-        i = 0;
-        cv::Mat simplesImg = this->currentImageCv->clone();
-        for (auto simple : simples)
-        {
-            cv::polylines(simplesImg, simple, false, colours[i], 3);
-            cv::putText(simplesImg, 
-                cv::String(std::to_string(i)), 
-                simple[0],
-                cv::FONT_HERSHEY_DUPLEX,
-                1,
-                colours[i]
-            );
-            i++;
-        }
-        cv::imshow("simples", simplesImg);
-
         if (simples.size() != 4)
         {
             success = false;
@@ -1043,7 +1023,7 @@ bool LampImageAnalyser::SimplifyLampContours()
             {
                 cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 3, cv::LINE_AA);
             }
-            cv::imshow("lamp contours", drawn);
+            //cv::imshow("lamp contours", drawn);
             *this->currentImageCv = std::move(drawn);
         }
         
@@ -1720,6 +1700,63 @@ void FindApexes(const std::vector<std::vector<cv::Point>>& inputVector, std::vec
     apexes = apexesRaw;
 }
 
+ApexSanityResult FindApexes
+(
+    const std::vector<std::vector<cv::Point>> & shapes,
+    std::vector<std::vector<cv::Point>>& electrodes,
+    std::vector<cv::Point>& apexes,
+    int imgWidth,
+    int imgHeight
+)
+{
+    std::vector<cv::Point> apexesVect;
+    ApexSanityResult apexError = ApexSanityResult::APEX_OK;
+
+    for (auto electrode : shapes)
+    { 
+        if (electrode.size() <= 2)
+        {
+            // too small -> not connected to anything
+            continue;
+        }
+        // Approximate polyline with straight segments
+        std::vector<cv::Point> approx;
+        double epsilon = 10.0; // Approximation accuracy
+        cv::approxPolyDP(electrode, approx, epsilon, false);
+
+        // Find angles between consecutive segments
+        double limitAngle = 45;
+        cv::Point apex(0,0);
+
+        for (size_t i = 1; i + 1 < approx.size(); ++i) {
+            // Build direction vectors along the two adjacent segments
+            cv::Point2f v1 = cv::Point2f(approx[i].x - approx[i-1].x,
+                                        approx[i].y - approx[i-1].y);
+            cv::Point2f v2 = cv::Point2f(approx[i+1].x - approx[i].x,
+                                        approx[i+1].y - approx[i].y);
+
+            // Optional: ignore tiny/degenerate segments to avoid noisy angles
+            if (cv::norm(v1) < 1e-6 || cv::norm(v2) < 1e-6) continue;
+
+            double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
+            if (interior_deg < limitAngle && interior_deg > 10.0)
+            {  
+                apex = approx[i];
+
+                ApexSanityResult isApexOk = ApexSanityCheck(approx, i, imgWidth, imgHeight);
+
+                if (isApexOk == ApexSanityResult::APEX_OK)
+                {
+                    apexesVect.push_back(apex);
+                    electrodes.push_back(electrode);
+                }
+            }
+        }
+    }
+    apexes = apexesVect;
+    return apexError;
+}
+
 bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 {
     bool success = true;
@@ -1760,173 +1797,151 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     std::vector<cv::Vec4f> lines;
     fld->detect(imgGray, lines);
 
-    std::vector<std::vector<cv::Point>> segments;
-    std::vector<std::vector<cv::Point>> electrodesJoined;
-    
-    for (const auto& l : lines) 
+    if (lines.size() < 1)
     {
-        segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
-                            cv::Point(cvRound(l[2]), cvRound(l[3])) });
-    }
-
-    // for (auto poly : segments)
-    // {
-    //     cv::polylines(toTrace, poly, 0, colours[1]);
-    // }
-
-    // cv::imshow("raw", toTrace);
-
-    //join broken contours
-    this->lamp.electrodes.clear();
-    double tolerance = imageType == ImageType::XRAY ? 0.1 : 0.05;
-    JoinSegmentsRecursive(segments, electrodesJoined, tolerance, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
-
-    // I HAVE NO IDEA WHY, BUT DON'T TOUCH
-    std::sort(electrodesJoined.begin(), electrodesJoined.end(),
-        [](auto &a, auto &b)
-        { 
-            return a.size() < b.size(); 
-        }
-    );
-    while (electrodesJoined.back().size() < 3)
-    {
-        electrodesJoined.pop_back();
-    }
-
-    // cv::Mat toShow = img.clone();
-    // int i = 1;
-    // for (auto poly : electrodesJoined)
-    // {
-    //     cv::polylines(toShow, poly, 0, colours[3],3);
-    //     cv::putText(toShow, 
-    //         cv::String(std::to_string(i)),  
-    //         poly[0],
-    //         cv::FONT_HERSHEY_PLAIN,
-    //         0.9,
-    //         colours[3]
-    //     );
-    //     i++;
-    // }
-    // cv::imshow("JOINED", toShow);
-
-    // find vertices
-    std::vector<cv::Point> apexesVect;
-    ApexSanityResult apexError = ApexSanityResult::APEX_OK;
-
-    for (auto electrode : electrodesJoined)
-    { 
-        if (electrode.size() <= 2)
-        {
-            // too small -> not connected to anything
-            continue;
-        }
-        // Approximate polyline with straight segments
-        std::vector<cv::Point> approx;
-        double epsilon = 10.0; // Approximation accuracy
-        cv::approxPolyDP(electrode, approx, epsilon, false);
-
-        // Find angles between consecutive segments
-        double limitAngle = 45;
-        cv::Point apex(0,0);
-
-        for (size_t i = 1; i + 1 < approx.size(); ++i) {
-            // Build direction vectors along the two adjacent segments
-            cv::Point2f v1 = cv::Point2f(approx[i].x - approx[i-1].x,
-                                        approx[i].y - approx[i-1].y);
-            cv::Point2f v2 = cv::Point2f(approx[i+1].x - approx[i].x,
-                                        approx[i+1].y - approx[i].y);
-
-            // Optional: ignore tiny/degenerate segments to avoid noisy angles
-            if (cv::norm(v1) < 1e-6 || cv::norm(v2) < 1e-6) continue;
-
-            double interior_deg = interiorAngleDeg(v1, v2);    // [0..180]
-            if (interior_deg < limitAngle && interior_deg > 15.0)
-            {  
-                apex = approx[i];
-
-                ApexSanityResult isApexOk = ApexSanityCheck(approx, i, imgGray.rows, imgGray.cols);
-
-                if (isApexOk == ApexSanityResult::APEX_OK)
-                {
-                    apexesVect.push_back(apex);
-                    this->lamp.electrodes.push_back(electrode);
-                }
-
-            }
-        }
-    }
-
-    // might be duplicate points because contours might be duplicated
-    if (apexesVect.size() > 2)
-    {
-        RemoveDuplicatePoints(apexesVect, apexesVect);
-    }
-
-    // only leave those that are aligned (stricly horizontal) or misalighned on a small angle
-    if (apexesVect.size() > 2)
-    {
-        double minDistance = 1000;
-        QPair<int, int> bestApexes = {0,0};
-        std::vector<cv::Point> twoApexes;
-        for (int i = 0; i < apexesVect.size(); ++i)
-        {
-            for (int j = 1; j < apexesVect.size(); ++j)
-            {
-                if (j == i)
-                {
-                    continue;
-                }
-                auto [distance, angle] = CalculateDistanceAngle(apexesVect[i], apexesVect[j]);
-                if (distance < minDistance)
-                {
-                    minDistance = distance;
-                    bestApexes = {i, j};
-                }
-            }
-        }
-        if (bestApexes.first != bestApexes.second)
-        {
-            twoApexes.push_back(apexesVect[bestApexes.first]);
-            twoApexes.push_back(apexesVect[bestApexes.second]);
-            apexesVect = twoApexes;
-        }
-    }
-
-    if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
-    {
-        emit ElectrodesAnalysisFailed();
         success = false;
     }
-    else
     {
-        QPair<cv::Point, cv::Point> apexes;
-        apexes.first = apexesVect[0];
-        apexes.second = apexesVect[1];
+        std::vector<std::vector<cv::Point>> segments;
+        std::vector<std::vector<cv::Point>> electrodesJoined;
         
-        auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
-        this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
+        for (const auto& l : lines) 
+        {
+            segments.push_back({ cv::Point(cvRound(l[0]), cvRound(l[1])),
+                                cv::Point(cvRound(l[2]), cvRound(l[3])) });
+        }
 
-        this->lamp.electrodesDistancePx = distance;
-        this->lamp.electrodesApexes = apexes;
-        this->lamp.electrodesAngle = angle;
+        // for (auto poly : segments)
+        // {
+        //     cv::polylines(toTrace, poly, 0, colours[1]);
+        // }
+
+        // cv::imshow("raw", toTrace);
+
+        //join broken contours
+        this->lamp.electrodes.clear();
+        double tolerance = imageType == ImageType::XRAY ? 0.1 : 0.05;
+        JoinSegmentsRecursive(segments, electrodesJoined, tolerance, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
+
+        if (electrodesJoined.size() < 1)
+        {
+            success = false;
+        }
+        else
+        {
+            // I HAVE NO IDEA WHY, BUT DON'T TOUCH
+            std::sort(electrodesJoined.begin(), electrodesJoined.end(),
+                [](auto &a, auto &b)
+                { 
+                    return a.size() < b.size(); 
+                }
+            );
+            while (electrodesJoined.back().size() < 3)
+            {
+                electrodesJoined.pop_back();
+            }
+
+            // cv::Mat toShow = img.clone();
+            // int i = 1;
+            // for (auto poly : electrodesJoined)
+            // {
+            //     cv::polylines(toShow, poly, 0, colours[3],3);
+            //     cv::putText(toShow, 
+            //         cv::String(std::to_string(i)),  
+            //         poly[0],
+            //         cv::FONT_HERSHEY_PLAIN,
+            //         0.9,
+            //         colours[3]
+            //     );
+            //     i++;
+            // }
+            // cv::imshow("JOINED", toShow);
+
+            // find vertices
+            
+            std::vector<cv::Point> apexesVect;
+            ApexSanityResult apexError = FindApexes
+                                        (
+                                            electrodesJoined,
+                                            this->lamp.electrodes,
+                                            apexesVect,
+                                            imgGray.cols,
+                                            imgGray.rows
+                                        );
+                                                
+            // might be duplicate points because contours might be duplicated
+            if (apexesVect.size() > 2)
+            {
+                RemoveDuplicatePoints(apexesVect, apexesVect);
+            }
+
+            // only leave those that are aligned (stricly horizontal) or misalighned on a small angle
+            if (apexesVect.size() > 2)
+            {
+                double minDistance = 1000;
+                QPair<int, int> bestApexes = {0,0};
+                std::vector<cv::Point> twoApexes;
+                for (int i = 0; i < apexesVect.size(); ++i)
+                {
+                    for (int j = 1; j < apexesVect.size(); ++j)
+                    {
+                        if (j == i)
+                        {
+                            continue;
+                        }
+                        auto [distance, angle] = CalculateDistanceAngle(apexesVect[i], apexesVect[j]);
+                        if (distance < minDistance)
+                        {
+                            minDistance = distance;
+                            bestApexes = {i, j};
+                        }
+                    }
+                }
+                if (bestApexes.first != bestApexes.second)
+                {
+                    twoApexes.push_back(apexesVect[bestApexes.first]);
+                    twoApexes.push_back(apexesVect[bestApexes.second]);
+                    apexesVect = twoApexes;
+                }
+            }
+
+            if (apexesVect.empty() || apexesVect.size() != 2 || apexError != ApexSanityResult::APEX_OK)
+            {
+                emit ElectrodesAnalysisFailed();
+                success = false;
+            }
+            else
+            {
+                QPair<cv::Point, cv::Point> apexes;
+                apexes.first = apexesVect[0];
+                apexes.second = apexesVect[1];
+                
+                auto [distance, angle] = CalculateDistanceAngle(apexes.first, apexes.second);
+                this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
+
+                this->lamp.electrodesDistancePx = distance;
+                this->lamp.electrodesApexes = apexes;
+                this->lamp.electrodesAngle = angle;
+            }
+
+            // WRITE DOWN VERTICALITY
+            std::vector<cv::Point> electrode0 = this->lamp.electrodes[0];
+            int verticalDiff = FindMinMaxPoint(electrode0, true, false).y - FindMinMaxPoint(electrode0, false, false).y;
+            int horizontalDiff = FindMinMaxPoint(electrode0, true, true).x - FindMinMaxPoint(electrode0, false, true).x;
+            this->lamp.isVertical = (horizontalDiff < verticalDiff);
+
+            cv::Mat drawn = this->currentImageCv->clone();
+
+            cv::drawMarker(
+                drawn,
+                this->lamp.electrodesApexes.first,
+                cv::Scalar(0,255,255),
+                cv::MARKER_CROSS,   // <- use a valid marker type
+                10,                 // markerSize
+                1                   // thickness
+            );
+        }
     }
-
-    // WRITE DOWN VERTICALITY
-    std::vector<cv::Point> electrode0 = this->lamp.electrodes[0];
-    int verticalDiff = FindMinMaxPoint(electrode0, true, false).y - FindMinMaxPoint(electrode0, false, false).y;
-    int horizontalDiff = FindMinMaxPoint(electrode0, true, true).x - FindMinMaxPoint(electrode0, false, true).x;
-    this->lamp.isVertical = (horizontalDiff < verticalDiff);
-
-    cv::Mat drawn = this->currentImageCv->clone();
-
-    cv::drawMarker(
-        drawn,
-        this->lamp.electrodesApexes.first,
-        cv::Scalar(0,255,255),
-        cv::MARKER_CROSS,   // <- use a valid marker type
-        10,                 // markerSize
-        1                   // thickness
-    );
 
     return success;
 }
