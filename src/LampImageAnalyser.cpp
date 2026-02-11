@@ -100,7 +100,7 @@ void JoinSegmentsRecursive
     std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>>& output, 
     double toleranceLen,
-    bool isSorted=false,
+    bool isFirstRun=true,
     ImageType imgType = ImageType::XRAY,
     cv::Point imgDim = cv::Point(2500, 2500)
 );
@@ -1300,12 +1300,39 @@ QPair<float, float> LampImageAnalyser::CalculateDistanceAngle(QPointF start, QPo
     return QPair(distance, angle);
 }
 
+double CalcMaxLenSector(std::vector<cv::Point> first, std::vector<cv::Point> second, bool isFirstFront, bool isSecondFront)
+{
+    std::vector<cv::Point> sector1, sector2;
+    if (!isFirstFront && isSecondFront)
+    {
+        sector1 = std::vector<cv::Point>(second.begin(), second.begin() + 2);
+        sector2 = std::vector<cv::Point>(first.end() - 2, first.end());
+    }                
+    else if (isFirstFront && !isSecondFront)
+    {
+        sector1 = std::vector<cv::Point>(second.end() - 2, second.end());
+        sector2 = std::vector<cv::Point>(first.begin(), first.begin() + 2);
+    }
+    else if (isFirstFront && isSecondFront)
+    {
+        sector1 = std::vector<cv::Point>(first.begin(), first.begin() + 2);
+        sector2 = std::vector<cv::Point>(second.begin(), second.begin() + 2);
+    }
+    else if (!isFirstFront && !isSecondFront)
+    {
+        sector1 = std::vector<cv::Point>(first.end() - 2, first.end());
+        sector2 = std::vector<cv::Point>(second.end() - 2, second.end());
+    }
+    return std::max(cv::arcLength(sector1, false), cv::arcLength(sector2, false));
+
+}
+
 void JoinSegmentsRecursive
 (
     std::vector<std::vector<cv::Point>>& input, 
     std::vector<std::vector<cv::Point>>& output, 
     double toleranceLen,
-    bool isSorted,
+    bool isFirstRun,
     ImageType imgType,
     cv::Point imgDim
 )
@@ -1316,9 +1343,8 @@ void JoinSegmentsRecursive
     
     bool isVertical;
     // first sort for easier comparison
-    if (!isSorted)
+    if (isFirstRun)
     {
-
         for (auto& segment : inputVector)
         {
             int verticalDiff = FindMinMaxPoint(segment, true, false).y - FindMinMaxPoint(segment, false, false).y;
@@ -1352,7 +1378,7 @@ void JoinSegmentsRecursive
         {
             float vectorLen_j = cv::arcLength(inputVector[j], false);
             float len = std::max(vectorLen_i, vectorLen_j);
-            float pointsTolerance = toleranceLen * len;
+            // float pointsTolerance = toleranceLen * len;
             if (j == i)
             {
                 continue;
@@ -1361,28 +1387,21 @@ void JoinSegmentsRecursive
             {
                 continue;
             }
-
             bool closeBeginToEnd = distance(inputVector[j].front(), inputVector[i].back()) 
-                                        <  pointsTolerance;
+                            <  CalcMaxLenSector(inputVector[i], inputVector[j], false, true) * toleranceLen;
             bool closeEndToBegin = distance(inputVector[j].back(), inputVector[i].front())
-                                        <  pointsTolerance;
+                            <  CalcMaxLenSector(inputVector[i], inputVector[j], true, false) * toleranceLen;
 
             bool closeBeginToBegin = distance(inputVector[j].front(),inputVector[i].front())
-                                        <  pointsTolerance;
+                            < CalcMaxLenSector(inputVector[i], inputVector[j], true, true) * toleranceLen;
             bool closeEndToEnd = distance(inputVector[j].back(),inputVector[i].back())
-                                        <  pointsTolerance;
+                            < CalcMaxLenSector(inputVector[i], inputVector[j], false, false) * toleranceLen;
 
 
             bool sameBeginToBegin = distance(inputVector[j].front(),inputVector[i].front())
                                         <  len*0.01;
             bool sameEndToEnd = distance(inputVector[j].back(),inputVector[i].back())
                                         <  len*0.01;
-  
-            if (sameBeginToBegin & sameEndToEnd ) // similar
-            {
-                duplicate = true;
-                break;
-            }
             
              std::vector<cv::Point> joined;
 
@@ -1435,10 +1454,12 @@ void JoinSegmentsRecursive
                 {
                     continue;
                 }
+                float intersectionTolerance = 
+                            std::max(cv::arcLength(sector1, false), cv::arcLength(sector2, false)) * 2;
 
                 if (closeBeginToEnd)
                 {
-                    if (distance(inputVector[i].back(), intersection) < pointsTolerance)
+                    if (distance(inputVector[i].back(), intersection) < intersectionTolerance)
                     {
                         joined = inputVector[i];
                         joined.pop_back();
@@ -1448,7 +1469,7 @@ void JoinSegmentsRecursive
                 }
                 else if (closeEndToBegin)
                 {
-                    if (distance(inputVector[j].back(), intersection) < pointsTolerance)
+                    if (distance(inputVector[j].back(), intersection) < intersectionTolerance)
                     {
                         joined = inputVector[j];
                         joined.pop_back();
@@ -1458,7 +1479,7 @@ void JoinSegmentsRecursive
                 }
                 else if (closeBeginToBegin)
                 {
-                    if (distance(inputVector[i].front(), intersection) < pointsTolerance)
+                    if (distance(inputVector[i].front(), intersection) < intersectionTolerance)
                     {
                         std::vector<cv::Point> inputIReverse = inputVector[i];
                         std::reverse(inputIReverse.begin(), inputIReverse.end());
@@ -1470,7 +1491,7 @@ void JoinSegmentsRecursive
                 }
                 else if (closeEndToEnd)
                 {
-                    if (distance(inputVector[j].back(), intersection) < pointsTolerance)
+                    if (distance(inputVector[j].back(), intersection) < intersectionTolerance)
                     {
                         std::vector<cv::Point> inputJReverse = inputVector[j];
                         std::reverse(inputJReverse.begin(), inputJReverse.end());
@@ -1502,7 +1523,7 @@ void JoinSegmentsRecursive
 
     if (anyMerged)
     {
-        JoinSegmentsRecursive(jointVector, outputVector, toleranceLen, true);
+        JoinSegmentsRecursive(jointVector, outputVector, toleranceLen, false);
         output = outputVector;
     }
     else
@@ -1727,21 +1748,28 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
     
     cv::Mat imgBlur;
-    cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.7);
+    if (this->imageType == ImageType::XRAY)
+    {
+        cv::GaussianBlur(imgGray, imgBlur, cv::Size(3,3), 1.7);
+    }
+    else
+    {
+        cv::bilateralFilter(imgGray, imgBlur, 7, 75, 75);       
+    }
 
     // TRACING
     cv::Mat toTrace = img.clone();
 
     int lenThr = 40;
     double distThr = 1.4142;
-    int canny1Thr = 25;
-    int canny2Thr = 75;
+    int canny1Thr = 10;
+    int canny2Thr = 40;
 
     if (imageType == ImageType::PHOTO)
     {
         lenThr = 40;
         canny1Thr = 100;
-        canny2Thr = 255;
+        canny2Thr = 200;
     }
     cv::Ptr<cv::ximgproc::FastLineDetector> fld =
             cv::ximgproc::createFastLineDetector(lenThr,
@@ -1775,8 +1803,8 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
         //join broken contours
         this->lamp.electrodes.clear();
-        double tolerance = imageType == ImageType::XRAY ? 0.1 : 0.1;
-        JoinSegmentsRecursive(segments, electrodesJoined, tolerance, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
+        double tolerance = imageType == ImageType::XRAY ? 0.2 : 0.1;
+        JoinSegmentsRecursive(segments, electrodesJoined, tolerance, true, imageType, cv::Point(imgGray.cols, imgGray.rows));
 
         if (electrodesJoined.size() < 1)
         {
@@ -1805,7 +1833,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                     cv::String(std::to_string(i)),  
                     poly[0],
                     cv::FONT_HERSHEY_PLAIN,
-                    0.9,
+                    1.5,
                     colours[3]
                 );
                 i++;
@@ -1876,6 +1904,11 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                 {
                     angle = 90 - std::abs(angle);
                 }
+                if (angle > 30)
+                {
+                    emit ElectrodesAnalysisFailed();
+                    success = false;
+                }
                 this->lamp.lampCenter = cv::Point2f((apexes.first.x + apexes.second.x)/2, (apexes.first.y + apexes.second.y)/2);
 
                 this->lamp.electrodesDistancePx = distance;
@@ -1885,20 +1918,50 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
             // WRITE DOWN VERTICALITY
             std::vector<cv::Point> electrode0 = this->lamp.electrodes[0];
-            int verticalDiff = FindMinMaxPoint(electrode0, true, false).y - FindMinMaxPoint(electrode0, false, false).y;
-            int horizontalDiff = FindMinMaxPoint(electrode0, true, true).x - FindMinMaxPoint(electrode0, false, true).x;
+            cv::Point apex;
+            int verticalDiff, horizontalDiff;
+            
+            auto it0 = std::find(electrode0.begin(), electrode0.end(), this->lamp.electrodesApexes.first);
+            auto it1 = std::find(electrode0.begin(), electrode0.end(), this->lamp.electrodesApexes.second);
+            if (it0 == electrode0.end())
+            {
+                it0 = std::find(electrode0.begin(), electrode0.end(), this->lamp.electrodesApexes.second);
+            }
+
+            if (it0 != electrode0.end())
+            {
+                verticalDiff = std::max(std::abs((*it0).y - (*(it0 - 1)).y), std::abs((*it0).y - (*(it0 + 1)).y));
+                horizontalDiff = std::max(std::abs((*it0).x - (*(it0 - 1)).x), std::abs((*it0).x - (*(it0 + 1)).x));
+            }
+            else
+            {
+                verticalDiff = FindMinMaxPoint(electrode0, true, false).y - FindMinMaxPoint(electrode0, false, false).y;
+                horizontalDiff = FindMinMaxPoint(electrode0, true, true).x - FindMinMaxPoint(electrode0, false, true).x;
+            }
+
             this->lamp.isVertical = (horizontalDiff < verticalDiff);
 
-            cv::Mat drawn = this->currentImageCv->clone();
+            // cv::Mat drawn = this->currentImageCv->clone();
 
-            cv::drawMarker(
-                drawn,
-                this->lamp.electrodesApexes.first,
-                cv::Scalar(0,0,0),
-                cv::MARKER_CROSS,   // <- use a valid marker type
-                10,                 // markerSize
-                1                   // thickness
-            );
+            // cv::drawMarker(
+            //     drawn,
+            //     this->lamp.electrodesApexes.first,
+            //     cv::Scalar(0,0,0),
+            //     cv::MARKER_CROSS,   // <- use a valid marker type
+            //     10,                 // markerSize
+            //     1                   // thickness
+            // );
+
+            // cv::drawMarker(
+            //     drawn,
+            //     this->lamp.electrodesApexes.second,
+            //     cv::Scalar(0,0,0),
+            //     cv::MARKER_CROSS,   // <- use a valid marker type
+            //     10,                 // markerSize
+            //     1                   // thickness
+            // );
+
+            // cv::imshow("apexes", drawn);
         }
     }
 
