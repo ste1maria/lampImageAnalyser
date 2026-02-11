@@ -242,7 +242,7 @@ cv::Mat SobelFilter(const cv::Mat& inputImg, double threshMultiplier, ImageType 
     //         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3)));
         
     // }
-    //cv::imshow("otsuBin", edgesMask);
+    // cv::imshow("otsuBin", edgesMask);
 
     return edgesMask;
 }
@@ -407,7 +407,7 @@ void LampImageAnalyser::PaintVertice(const QPointF& imgPt)
     cv::drawMarker(
         drawn,
         cv::Point(cvRound(imgPt.x()), cvRound(imgPt.y())),
-        cv::Scalar(255,255,255),
+        cv::Scalar(0,0,0),
         cv::MARKER_CROSS,   // <- use a valid marker type
         10,                 // markerSize
         1                   // thickness
@@ -435,7 +435,7 @@ void LampImageAnalyser::PaintVertice(const cv::Point& imgPt)
     cv::drawMarker(
         drawn,
         cv::Point(cvRound(imgPt.x), cvRound(imgPt.y)),
-        cv::Scalar(255,255,255),
+        cv::Scalar(0,0,0),
         cv::MARKER_CROSS,
         10,
         2
@@ -800,6 +800,22 @@ bool LampImageAnalyser::SimplifyLampContours()
             isVertical
         );
 
+        int i = 0;
+        cv::Mat cut = this->currentImageCv->clone();
+        for (auto segment : segmentsRaw)
+        {
+            cv::polylines(cut, segment, false, colours[i], 3);
+            cv::putText(cut, 
+                cv::String(std::to_string(i)), 
+                segment[0],
+                cv::FONT_HERSHEY_DUPLEX,
+                1,
+                colours[i]
+            );
+            i++;
+        }
+        cv::imshow("cut contours", cut);
+
         for (size_t i = 0; i < segmentsRaw.size(); i++)
         {
             // filter out contours that do not resemble lamp walls
@@ -842,6 +858,22 @@ bool LampImageAnalyser::SimplifyLampContours()
 
         //remove duplicates
         trueContours = RemoveSimilarContours(trueContours);
+
+        i = 0;
+        cv::Mat trueContoured = this->currentImageCv->clone();
+        for (auto segment : trueContours)
+        {
+            cv::polylines(trueContoured, segment, false, colours[i], 3);
+            cv::putText(trueContoured, 
+                cv::String(std::to_string(i)), 
+                segment[0],
+                cv::FONT_HERSHEY_DUPLEX,
+                1,
+                colours[i]
+            );
+            i++;
+        }
+        cv::imshow("true contours removed", trueContoured);
 
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
@@ -944,7 +976,7 @@ bool LampImageAnalyser::SimplifyLampContours()
             {
                 cv::polylines(drawn, this->lamp.lampContours[i], false, colours[i], 3, cv::LINE_AA);
             }
-            //cv::imshow("lamp contours", drawn);
+            // cv::imshow("lamp contours", drawn);
             *this->currentImageCv = std::move(drawn);
         }
         
@@ -1158,16 +1190,18 @@ ApexSanityResult ApexSanityCheck
     }
 
     bool isVertical = false;
-    int verticalDiff = FindMinMaxPoint(shape, true, false).y - FindMinMaxPoint(shape, false, false).y;
-    int horizontalDiff = FindMinMaxPoint(shape, true, true).x - FindMinMaxPoint(shape, false, true).x;
+
+    // really hard to find the base vertices, let's pretend it is a triangle
+    cv::Point left = apexIdx > 0 ? shape[apexIdx-1] : cv::Point(0, 0);
+    cv::Point right = apexIdx < (shape.size() - 1) ? shape[apexIdx + 1] : cv::Point(0, 0);
+
+    int verticalDiff = std::max(std::abs(shape[apexIdx].y - left.y), std::abs(shape[apexIdx].y - right.y));
+    int horizontalDiff = std::max(std::abs(shape[apexIdx].x - left.x), std::abs(shape[apexIdx].x - right.x));
     if (horizontalDiff < verticalDiff)
     {
         isVertical = true;
     }
 
-    // really hard to find the base vertices, let's pretend it is a triangle
-    cv::Point left = apexIdx > 0 ? shape[apexIdx-1] : cv::Point(0, 0);
-    cv::Point right = apexIdx < (shape.size() - 1) ? shape[apexIdx + 1] : cv::Point(0, 0);
 
     // apex projects on X axis on the base line?
     if (isVertical)
@@ -1741,7 +1775,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
         //join broken contours
         this->lamp.electrodes.clear();
-        double tolerance = imageType == ImageType::XRAY ? 0.1 : 0.05;
+        double tolerance = imageType == ImageType::XRAY ? 0.1 : 0.1;
         JoinSegmentsRecursive(segments, electrodesJoined, tolerance, false, imageType, cv::Point(imgGray.cols, imgGray.rows));
 
         if (electrodesJoined.size() < 1)
@@ -1762,21 +1796,21 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                 electrodesJoined.pop_back();
             }
 
-            // cv::Mat toShow = img.clone();
-            // int i = 1;
-            // for (auto poly : electrodesJoined)
-            // {
-            //     cv::polylines(toShow, poly, 0, colours[3],3);
-            //     cv::putText(toShow, 
-            //         cv::String(std::to_string(i)),  
-            //         poly[0],
-            //         cv::FONT_HERSHEY_PLAIN,
-            //         0.9,
-            //         colours[3]
-            //     );
-            //     i++;
-            // }
-            // cv::imshow("JOINED", toShow);
+            cv::Mat toShow = img.clone();
+            int i = 1;
+            for (auto poly : electrodesJoined)
+            {
+                cv::polylines(toShow, poly, 0, colours[3],3);
+                cv::putText(toShow, 
+                    cv::String(std::to_string(i)),  
+                    poly[0],
+                    cv::FONT_HERSHEY_PLAIN,
+                    0.9,
+                    colours[3]
+                );
+                i++;
+            }
+            cv::imshow("JOINED", toShow);
 
             // find vertices
             
@@ -1860,7 +1894,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
             cv::drawMarker(
                 drawn,
                 this->lamp.electrodesApexes.first,
-                cv::Scalar(0,255,255),
+                cv::Scalar(0,0,0),
                 cv::MARKER_CROSS,   // <- use a valid marker type
                 10,                 // markerSize
                 1                   // thickness
@@ -1923,13 +1957,88 @@ QPair<double, double>  LampImageAnalyser::CalculateWallThickness()
     return result;
 }
 
+void LampImageAnalyser::FindScale(QImage& inputImage)
+{
+    bool success = false;
+
+    uint8_t * buffer = (uint8_t*)inputImage.bits();
+    size_t width = inputImage.width();
+    size_t height = inputImage.height();
+    size_t stride = inputImage.bytesPerLine();
+
+    cv::Mat img = cv::Mat(height, width, CV_8UC3, buffer, stride);
+
+    cv::Mat imgRoi = img(cv::Rect(0, 0, width/4, height/4));
+
+    cv::Mat imgGray;
+    cv::cvtColor(imgRoi, imgGray, cv::COLOR_BGR2GRAY);
+    
+    cv::Mat cannied;
+    cv::Canny(imgGray, cannied, 10, 200, 3);
+    
+    std::vector<cv::Vec4i> lines;
+    cv::HoughLinesP(cannied, lines, 1, CV_PI/180, 50, 50, 10 );
+
+    double bestLen = 0.0;
+    int bestIdx = -1;
+    if (lines.size() > 0)
+    {
+        // cv::Mat lined = img.clone();
+        // for( size_t i = 0; i < lines.size(); i++ )
+        // {
+        //     cv::Vec4i l = lines[i];
+        //     cv::line( lined, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0,0,255), 3, cv::LINE_AA);
+        // }
+        // cv::imshow("lined", lined);
+
+        for (int i = 0; i < lines.size(); ++i)
+        {
+            const double dx = double(lines[i][2]) - double(lines[i][0]);
+            const double dy = double(lines[i][3]) - double(lines[i][1]);
+            double angle = std::abs(std::atan2(dy, dx));
+
+            double maxRad = 5 * CV_PI/ 180.0;
+            
+            if ((angle < maxRad) || (std::abs(CV_PI - angle) < maxRad))
+            {
+                double L = std::sqrt(dx*dx + dy*dy);
+                if (L > bestLen)
+                {
+                    bestLen = L;
+                    bestIdx = i;
+                }
+            }
+        }
+        if (bestIdx > 0)
+        {
+            this->lamp.pixelMmRatio = bestLen;
+            success = true;
+        }
+    }
+
+    if (!success)
+    {
+        this->lamp.pixelMmRatio = pxToMmDefaultPhoto; // very very rough estimate
+    }
+}
+
+
 void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
 {
     bool success = true;
     this->lamp.ResetLampModel();
-    // TODO: ratio determination from photo scale
-    this->lamp.pixelMmRatio = this->imageType == ImageType::XRAY ? pxToMmDefaultXray : 850/7;
+
     this->fullResultsString = "";
+
+    if (this->imageType == ImageType::PHOTO)
+    {
+        FindScale(imgToProcess);
+    }
+    else
+    {
+        this->lamp.pixelMmRatio = pxToMmDefaultXray;
+    }
+
     success = this->ProcessElectrodes(imgToProcess);
     if (success)
     {

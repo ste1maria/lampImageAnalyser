@@ -111,6 +111,7 @@ private:
     };
 
     const double standardLampWidth_mm = 7.00;
+    const double pxToMmDefaultPhoto = 125;
     const double pxToMmDefaultXray = 55.5;
 
     ImageType imageType = ImageType::XRAY;
@@ -129,6 +130,7 @@ private:
     bool SimplifyLampContours();
     void FindPixelMmRatio(int lampWidthPx);
     QPair<double, double> CalculateWallThickness();
+    void FindScale(QImage& inputImage);
 
     QString fullResultsString;
 };
