@@ -1768,7 +1768,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     if (imageType == ImageType::PHOTO)
     {
         lenThr = 40;
-        canny1Thr = 100;
+        canny1Thr = 150;
         canny2Thr = 200;
     }
     cv::Ptr<cv::ximgproc::FastLineDetector> fld =
@@ -1803,7 +1803,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
         //join broken contours
         this->lamp.electrodes.clear();
-        double tolerance = imageType == ImageType::XRAY ? 0.2 : 0.1;
+        double tolerance = 0.2; //imageType == ImageType::XRAY ? 0.2 : 0.1;
         JoinSegmentsRecursive(segments, electrodesJoined, tolerance, true, imageType, cv::Point(imgGray.cols, imgGray.rows));
 
         if (electrodesJoined.size() < 1)
@@ -1941,27 +1941,27 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
             this->lamp.isVertical = (horizontalDiff < verticalDiff);
 
-            // cv::Mat drawn = this->currentImageCv->clone();
+            cv::Mat drawn = this->currentImageCv->clone();
 
-            // cv::drawMarker(
-            //     drawn,
-            //     this->lamp.electrodesApexes.first,
-            //     cv::Scalar(0,0,0),
-            //     cv::MARKER_CROSS,   // <- use a valid marker type
-            //     10,                 // markerSize
-            //     1                   // thickness
-            // );
+            cv::drawMarker(
+                drawn,
+                this->lamp.electrodesApexes.first,
+                cv::Scalar(0,0,0),
+                cv::MARKER_CROSS,   // <- use a valid marker type
+                10,                 // markerSize
+                1                   // thickness
+            );
 
-            // cv::drawMarker(
-            //     drawn,
-            //     this->lamp.electrodesApexes.second,
-            //     cv::Scalar(0,0,0),
-            //     cv::MARKER_CROSS,   // <- use a valid marker type
-            //     10,                 // markerSize
-            //     1                   // thickness
-            // );
+            cv::drawMarker(
+                drawn,
+                this->lamp.electrodesApexes.second,
+                cv::Scalar(0,0,0),
+                cv::MARKER_CROSS,   // <- use a valid marker type
+                10,                 // markerSize
+                1                   // thickness
+            );
 
-            // cv::imshow("apexes", drawn);
+            cv::imshow("apexes", drawn);
         }
     }
 
