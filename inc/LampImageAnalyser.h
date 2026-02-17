@@ -111,7 +111,7 @@ private:
     };
 
     const double standardLampWidth_mm = 7.00;
-    const double pxToMmDefaultPhoto = 125;
+    const double pxToMmDefaultPhoto = 120; // with 1200 px width
     const double pxToMmDefaultXray = 55.5;
 
     ImageType imageType = ImageType::XRAY;

@@ -53,7 +53,7 @@ bool ImageProcessor::UploadImage(QString fileName)
         emit AnalysisFailed(AnalysisFailure::FAILURE_IMG_TOO_SMALL);
         success = false;
     }
-    else if (image.height() > 1200 && image.width() > 1920)
+    else if (image.width() > 1200)
     {
         image = image.scaled(QSize(1200, 900), Qt::KeepAspectRatio);
     }
