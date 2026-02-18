@@ -129,6 +129,42 @@ void onMouse(int event, int x, int y, int flags, void* userdata)
     }
 }
 
+void SortContours
+(
+    std::vector<int>& apexesIdxs, 
+    std::vector<std::vector<cv::Point>> & contours,
+    bool isVertical
+)
+{
+    if (apexesIdxs.size() != contours.size())
+    {
+        return; // do nothing, this is an error 
+        // TODO: handle
+    }
+
+    std::vector<size_t> order(contours.size());
+    std::iota(order.begin(), order.end(), 0);
+
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b)
+    {
+        return isVertical ? contours[a][apexesIdxs[a]].x < contours[b][apexesIdxs[b]].x
+                            : contours[a][apexesIdxs[a]].y < contours[b][apexesIdxs[b]].y;
+    });
+
+    std::vector<int> newApexes;
+    std::vector<std::vector<cv::Point>> newContours;
+    newApexes.reserve(apexesIdxs.size());
+    newContours.reserve(contours.size());
+
+    for (size_t i : order) {
+        newApexes.push_back(apexesIdxs[i]);
+        newContours.push_back(std::move(contours[i]));
+    }
+
+    apexesIdxs = std::move(newApexes);
+    contours = std::move(newContours);
+}
+
 LampImageAnalyser::LampImageAnalyser()
 {
     this->currentImageCv = std::make_shared<cv::Mat>();
@@ -679,7 +715,7 @@ void CutCloseToCenter
             piece.clear();
         }
     }
-    output = pieces;
+    output = std::move(pieces);
 }
 
 // TODO: larger value of tolerance for larger images
@@ -988,10 +1024,14 @@ bool LampImageAnalyser::SimplifyLampContours()
         }
         else
         {
-            for (auto contour : simples)
+            std::vector<int> apexIdxs;
+            for (int i = 0; i < simples.size(); ++i)
             {
+                std::vector<cv::Point> contour = simples[i];
                 double centerApproxTolerance = this->lamp.electrodesDistancePx * 0.5;
                 int apexIdx = findCurveApex(contour, this->lamp.isVertical, this->lamp.lampCenter, centerApproxTolerance);
+                
+                apexIdxs.push_back(apexIdx);
                 
                 this->lamp.wallsApexes.push_back(contour[apexIdx]);
 
@@ -1010,6 +1050,8 @@ bool LampImageAnalyser::SimplifyLampContours()
                     endApex = isVertical ? checkApex : contour[apexIdx].y;
                 }
             }
+
+            SortContours(apexIdxs, simples, this->lamp.isVertical);
 
             this->lamp.lampWidth = std::abs((startApex - endApex)) / this->lamp.pixelMmRatio;
             this->lamp.lampContours = simples;
@@ -1195,19 +1237,19 @@ void LampImageAnalyser::CalculateRadii(std::vector<float>* radii, std::vector<QP
         // qDebug() << "Curve " << i << ": fitR=" << radius << "@ (" << center.x << "," << center.y;
 
         // std::string radiusStr(std::format("({}) R={:.1f} px", i + 1, radius));
-        // std::string curveNumber(std::format("({})", i + 1));
+        std::string curveNumber(std::format("({})", i + 1));
         // radiiString += QString::fromStdString(radiusStr) + "; ";
         
-        //cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
+        cv::Point coordinates = cv::Point(this->lamp.lampContours[i][0].x, this->lamp.lampContours[i][0].y - 30);
 
-        // double fontScale = this->currentImageCv->cols / 1000;
-        // cv::putText(*this->currentImageCv, 
-        //         cv::String(curveNumber), 
-        //         coordinates,
-        //         cv::FONT_HERSHEY_DUPLEX,
-        //         fontScale,
-        //         colours[i]
-        // );
+        double fontScale = this->currentImageCv->cols / 500;
+        cv::putText(*this->currentImageCv, 
+                cv::String(curveNumber), 
+                coordinates,
+                cv::FONT_HERSHEY_DUPLEX,
+                fontScale,
+                colours[i]
+        );
 
         PaintCircleCenter(cv::Point(center.x, center.y), i + 1, colours[i]);
 
@@ -1597,11 +1639,11 @@ void JoinSegmentsRecursive
     if (anyMerged)
     {
         JoinSegmentsRecursive(jointVector, outputVector, toleranceLen, isElectrodes, false);
-        output = outputVector;
+        output = std::move(outputVector);
     }
     else
     {
-        output = jointVector;
+        output = std::move(jointVector);
     }
 }
 
@@ -1650,7 +1692,7 @@ void RemoveDuplicatePoints(std::vector<cv::Point>& input, std::vector<cv::Point>
             outputVector.push_back(inputVector[i]);
         }
     }
-    output = outputVector;
+    output = std::move(outputVector);
 }
 
 ApexSanityResult FindApexes
@@ -1706,7 +1748,7 @@ ApexSanityResult FindApexes
             }
         }
     }
-    apexes = apexesVect;
+    apexes = std::move(apexesVect);
     return apexError;
 }
 
