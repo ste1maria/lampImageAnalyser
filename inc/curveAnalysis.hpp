@@ -14,12 +14,28 @@ enum class OpeningLR
     Right = 1
 };
 
+enum class OpeningUD
+{
+    Down = -1,
+    Ambiguous = 0,
+    Up = 1
+};
+
 struct OpeningResult
 {
     OpeningLR opening = OpeningLR::Ambiguous;
+    OpeningUD openingUD = OpeningUD::Ambiguous;
     float confidence = 0.f; // 0..1 heuristic
     bool fromQuadratic = false;
     float a = 0.f; // quadratic coefficient in x' = a y'^2 + b y' + c
+};
+
+struct OpeningResultUD
+{
+    OpeningUD opening = OpeningUD::Ambiguous;
+    float confidence = 0.f; // 0..1 heuristic
+    bool fromQuadratic = false;
+    float a = 0.f; // quadratic coefficient in y' = a x'^2 + b x' + c
 };
 // --- PCA rotate: make Y' the long axis ---
 inline void rotateToPrincipalY(const std::vector<cv::Point> &pts,
@@ -261,4 +277,109 @@ inline OpeningResult detectOpeningLR(const std::vector<cv::Point> &curve)
     res.fromQuadratic = false;
     res.a = 0.f;
     return res;
+}
+
+// --- Main API: detect up/down opening ---
+inline OpeningResultUD detectOpeningUD(const std::vector<cv::Point> &curve)
+{
+    OpeningResultUD res;
+    const int N = (int)curve.size();
+    if (N < 3)
+    {
+        res.opening = OpeningUD::Ambiguous;
+        res.confidence = 0.f;
+        return res;
+    }
+
+    cv::Mat rot;
+    cv::Point2f mean;
+    cv::Mat eig;
+    rotateToPrincipalY(curve, rot, mean, eig);
+
+    // Swap columns so we can fit y'(x') via the existing quadratic fitter.
+    cv::Mat rotSwap(rot.rows, 2, CV_32F);
+    for (int i = 0; i < rot.rows; ++i)
+    {
+        rotSwap.at<float>(i, 0) = rot.at<float>(i, 1); // x' <- y'
+        rotSwap.at<float>(i, 1) = rot.at<float>(i, 0); // y' <- x'
+    }
+
+    // Fit quadratic y'(x')
+    float a = 0.f, b = 0.f, c = 0.f, r2 = 0.f;
+    bool ok = fitQuadraticXY(rotSwap, a, b, c, &r2);
+    if (ok)
+    {
+        float conf = 0.6f * std::clamp(r2, 0.f, 1.f) + 0.4f * std::min(1.f, std::abs(a) * 100.0f);
+        res.fromQuadratic = true;
+        res.a = a;
+        if (a > 0)
+        {
+            res.opening = OpeningUD::Up;
+            res.confidence = conf;
+        }
+        else
+        {
+            res.opening = OpeningUD::Down;
+            res.confidence = conf;
+        }
+
+        if (res.confidence < 0.4f)
+        {
+            float s = secondDerivativeSignFallback(rotSwap);
+            if (s != 0.f)
+            {
+                if ((s > 0 && res.opening == OpeningUD::Down) ||
+                    (s < 0 && res.opening == OpeningUD::Up))
+                {
+                    res.opening = OpeningUD::Ambiguous;
+                    res.confidence = 0.25f;
+                }
+            }
+        }
+        return res;
+    }
+
+    // Fallback: discrete second derivative sign for y'(x')
+    float s = secondDerivativeSignFallback(rotSwap);
+    if (s > 0.f)
+    {
+        res.opening = OpeningUD::Up;
+        res.confidence = std::min(1.f, s);
+    }
+    else if (s < 0.f)
+    {
+        res.opening = OpeningUD::Down;
+        res.confidence = std::min(1.f, -s);
+    }
+    else
+    {
+        res.opening = OpeningUD::Ambiguous;
+        res.confidence = 0.f;
+    }
+    res.fromQuadratic = false;
+    res.a = 0.f;
+    return res;
+}
+
+
+cv::Point FindMinMaxPoint(const std::vector<cv::Point> & vector, bool isMax, bool isX)
+{
+    cv::Point result;
+    std::vector<cv::Point>::const_iterator it;
+    if (isMax)
+    {
+        it = std::max_element(vector.begin(), vector.end(),
+            [isX](const cv::Point& a, const cv::Point& b) {
+                return isX ? (a.x < b.x) : (a.y < b.y);
+            });
+    }
+    else 
+    {
+        it = std::min_element(vector.begin(), vector.end(),
+            [isX](const cv::Point& a, const cv::Point& b) {
+                return isX ? (a.x < b.x) : (a.y < b.y);
+            });
+    }
+    result = *it;
+    return result;
 }

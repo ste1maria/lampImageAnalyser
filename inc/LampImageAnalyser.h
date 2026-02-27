@@ -15,6 +15,13 @@ typedef enum
     APEX_ERR_FAULTY_CONTOUR
 } ApexSanityResult;
 
+typedef enum 
+{
+    XRAY,
+    PHOTO
+}
+ImageType;
+
 class LampImageAnalyser : public QObject
 {
     Q_OBJECT
@@ -38,6 +45,7 @@ public:
     
     QPair<float, float> CalculateDistanceAngle(cv::Point start, cv::Point end);
     QPair<float, float> CalculateDistanceAngle(QPointF start, QPointF end);
+    void SetImageType(ImageType type);
 
 signals:
     void ImageProcessed(std::shared_ptr<cv::Mat> img);
@@ -58,7 +66,8 @@ signals:
     (
         std::vector<QPoint> centers, 
         std::vector<float> radii, 
-        QPair<double, double> thickness
+        QPair<double, double> thickness,
+        double lampWidth
     );
 
 private:
@@ -97,10 +106,15 @@ private:
         cv::Point2f lampCenter = undeterminedPoint;
         double electrodesDistancePx = 0;
         double electrodesAngle = 0.0f;
-        const double pixelMmRatio = 55.5; // const derived from statistics
+        double pixelMmRatio = 55.5; // const derived from statistics ONLY FOR XRAY!
+        bool isVertical = false;
     };
 
     const double standardLampWidth_mm = 7.00;
+    const double pxToMmDefaultPhoto = 120; // with 1200 px width
+    const double pxToMmDefaultXray = 55.5;
+
+    ImageType imageType = ImageType::XRAY;
 
     std::vector<std::vector<cv::Point>> contours;
     double sobelThreshMultiplierDefault = 1;
@@ -116,6 +130,7 @@ private:
     bool SimplifyLampContours();
     void FindPixelMmRatio(int lampWidthPx);
     QPair<double, double> CalculateWallThickness();
+    void FindScale(QImage& inputImage);
 
     QString fullResultsString;
 };

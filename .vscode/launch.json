@@ -21,7 +21,8 @@
                 {
                     "name": "PATH",
                     "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/snap/bin"
-                }
+                },
+                { "name": "DEBUGINFOD_ENABLED", "value": "0" }
             ],
             "externalConsole": true,
             "miDebuggerPath": "/usr/bin/gdb",
@@ -70,7 +71,8 @@
                 {
                     "name": "PATH",
                     "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/snap/bin"
-                }
+                },
+                  { "name": "DEBUGINFOD_ENABLED", "value": "0" }
             ],
             "externalConsole": true,
             "miDebuggerPath": "/usr/bin/gdb",

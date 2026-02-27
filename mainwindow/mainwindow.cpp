@@ -34,6 +34,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->labelLampResults->clear();
     ui->labelElectrodesResults->clear();
     ui->lineEditSerial->setText(this->serialNumberDefault);
+    ui->radioButtonXray->setChecked(true);
+    this->imgProcessor->SetImageType(ImageType::XRAY);
 
     connect(ui->pushButtonLoadImage, &QPushButton::clicked, this, &MainWindow::UploadImage);
     connect(ui->pushButtonManualSelection, &QPushButton::clicked, this, &MainWindow::StartManualSelection);
@@ -42,6 +44,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->pushButtonSaveResults, &QPushButton::clicked, this, &MainWindow::SaveResults);
     connect(ui->pushButtonSaveContours, &QPushButton::clicked, this, &MainWindow::SaveContours);
     connect(ui->pushButtonBatch, &QPushButton::clicked, this, &MainWindow::BatchProcessFolder);
+    connect(ui->radioButtonPhoto, &QRadioButton::toggled, this, &MainWindow::ChangeImageType);
 
     connect(this->visualisation, &GLVisualisation::clickedImage, this->imgProcessor.get(), &ImageProcessor::PaintVerticeSlot);
     connect(this->imgProcessor.get(), &ImageProcessor::DistanceCalculated, this, &MainWindow::ShowVerticesDistanceAngle);
@@ -51,6 +54,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    delete visualisation;
 }
 
 void MainWindow::UploadImage()
@@ -109,7 +113,8 @@ void MainWindow::PrintLampResults
 (
     std::vector<QPoint> centers, 
     std::vector<float> radii, 
-    QPair<double, double> thickness
+    QPair<double, double> thickness,
+    double lampWidth
 )
 {
     QString resultsString;
@@ -117,9 +122,10 @@ void MainWindow::PrintLampResults
     {
         resultsString += QString("R(%1)=%2 mm at (%3, %4);\n\r").arg(i+1).arg(radii[i], 0, 'f', 2).arg(centers[i].x()).arg(centers[i].y());
     }
-    resultsString += QString("\n\rLeft wall %1 mm, right wall %2 mm")
+    resultsString += QString("\n\rLeft wall %1 mm, right wall %2 mm\n\r")
                             .arg(thickness.first, 0, 'f', 2)
                             .arg(thickness.second, 0, 'f', 2);
+    resultsString += QString("Lamp width: %1 mm\n\r").arg(lampWidth, 0, 'f', 2);
     ui->labelLampResults->setText(resultsString);
 }
 
@@ -249,9 +255,22 @@ void MainWindow::BatchProcessFolder()
 
                 this->imgProcessor->SaveCalculations(serialNumber, true);
                 this->imgProcessor->SaveContours(serialNumber, true);
+                this->imgProcessor->SaveImage(serialNumber, true);
             }
 
         }
 
+    }
+}
+
+void MainWindow::ChangeImageType()
+{
+    if (ui->radioButtonPhoto->isChecked())
+    {
+        this->imgProcessor->SetImageType(ImageType::PHOTO);
+    }
+    else if (ui->radioButtonXray->isChecked())
+    {
+        this->imgProcessor->SetImageType(ImageType::XRAY);
     }
 }

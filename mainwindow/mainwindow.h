@@ -24,7 +24,8 @@ public slots:
     void PrintLampResults
     (   std::vector<QPoint> centers, 
         std::vector<float> radii, 
-        QPair<double, double> thickness
+        QPair<double, double> thickness,
+        double lampWidth
     );
 
     void PrintElectrodes
@@ -45,6 +46,7 @@ private slots:
     void SaveResults();
     void SaveContours();
     void BatchProcessFolder();
+    void ChangeImageType();
     
 private:
     Ui::MainWindow *ui;

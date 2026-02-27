@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <opencv2/core.hpp>
+#include "LampImageAnalyser.h"
 
 class MainWindow;
 class GLVisualisation;
@@ -28,7 +29,7 @@ public:
     bool UploadImage(QString fileName);
     void ResetImage();
     bool IsImagePresent();
-    void SaveImage(QString serialNumber);
+    void SaveImage(QString serialNumber, bool batch = false);
     void SaveCalculations(QString serialNumber, bool batch = false);
     void SaveContours(QString serialNumber, bool batch = false);
 
@@ -50,6 +51,7 @@ public slots:
 
     void ElectrodesProcessingFail();
     void WallsAnalysisFailSlot();
+    void SetImageType(ImageType type);
 
 private:
     MainWindow *mainWindow;

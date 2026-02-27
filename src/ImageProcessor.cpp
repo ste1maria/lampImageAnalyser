@@ -1,7 +1,6 @@
 #include "ImageProcessor.h"
 #include <QMessageBox>
 #include <QFileDialog>
-#include "LampImageAnalyser.h"
 #include <QDebug>
 #include <cmath>
 #include "mainwindow.h"
@@ -54,6 +53,10 @@ bool ImageProcessor::UploadImage(QString fileName)
         emit AnalysisFailed(AnalysisFailure::FAILURE_IMG_TOO_SMALL);
         success = false;
     }
+    else if (image.width() > 1200)
+    {
+        image = image.scaled(QSize(1200, 900), Qt::KeepAspectRatio);
+    }
     this->currentImage = image.convertToFormat(QImage::Format_BGR888);
     this->originalImage = currentImage.copy();
     this->ShowImage(currentImage);
@@ -69,14 +72,21 @@ void ImageProcessor::ShowImage(const QImage& image)
     this->visualization->ShowImage(image);
 }
 
-void ImageProcessor::SaveImage(QString serialNumber)
+void ImageProcessor::SaveImage(QString serialNumber, bool batch)
 {
-    QString filename = QFileDialog::getSaveFileName(
-            nullptr,
-            "Save Image As",
-            QString("lamp_%1.png").arg(serialNumber),
-            "Images (*.png *.bmp);;All Files (*)"
-    );
+    QString filenameString = QString("lamp_%1.png").arg(serialNumber);
+    QString filename = filenameString;
+    if (!batch)
+    {
+        QString filename = QFileDialog::getSaveFileName(
+                nullptr,
+                "Save Image As",
+                QString("lamp_%1.png").arg(serialNumber),
+                "Images (*.png *.bmp);;All Files (*)"
+        );
+    }
+
+    QFile data(filename);
 
     if (!filename.isEmpty()) {
         this->currentImage.save(filename);
@@ -232,4 +242,9 @@ void ImageProcessor::ResetManualSelection()
 {
     this->ResetImage();
     this->visualization->SetImageClickable(false);
+}
+
+void ImageProcessor::SetImageType(ImageType type)
+{
+    this->analyser->SetImageType(type);
 }
