@@ -29,7 +29,7 @@ public:
     bool UploadImage(QString fileName);
     void ResetImage();
     bool IsImagePresent();
-    void SaveImage(QString serialNumber);
+    void SaveImage(QString serialNumber, bool batch = false);
     void SaveCalculations(QString serialNumber, bool batch = false);
     void SaveContours(QString serialNumber, bool batch = false);
 

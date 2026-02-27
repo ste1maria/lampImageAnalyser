@@ -72,14 +72,21 @@ void ImageProcessor::ShowImage(const QImage& image)
     this->visualization->ShowImage(image);
 }
 
-void ImageProcessor::SaveImage(QString serialNumber)
+void ImageProcessor::SaveImage(QString serialNumber, bool batch)
 {
-    QString filename = QFileDialog::getSaveFileName(
-            nullptr,
-            "Save Image As",
-            QString("lamp_%1.png").arg(serialNumber),
-            "Images (*.png *.bmp);;All Files (*)"
-    );
+    QString filenameString = QString("lamp_%1.png").arg(serialNumber);
+    QString filename = filenameString;
+    if (!batch)
+    {
+        QString filename = QFileDialog::getSaveFileName(
+                nullptr,
+                "Save Image As",
+                QString("lamp_%1.png").arg(serialNumber),
+                "Images (*.png *.bmp);;All Files (*)"
+        );
+    }
+
+    QFile data(filename);
 
     if (!filename.isEmpty()) {
         this->currentImage.save(filename);

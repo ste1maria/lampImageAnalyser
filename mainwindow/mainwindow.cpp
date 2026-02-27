@@ -54,6 +54,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    delete visualisation;
 }
 
 void MainWindow::UploadImage()
@@ -254,6 +255,7 @@ void MainWindow::BatchProcessFolder()
 
                 this->imgProcessor->SaveCalculations(serialNumber, true);
                 this->imgProcessor->SaveContours(serialNumber, true);
+                this->imgProcessor->SaveImage(serialNumber, true);
             }
 
         }

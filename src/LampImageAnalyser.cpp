@@ -92,7 +92,8 @@ static double norm(const cv::Point2f& v) {
 static double distance(const cv::Point & a, const cv::Point & b)
 {
     cv::Point d = a - b;
-    return std::sqrt(d.x*d.x + d.y*d.y);
+    double dist = std::sqrt(d.x*d.x + d.y*d.y);
+    return dist;
 }
 
 void JoinSegmentsRecursive
@@ -1502,6 +1503,19 @@ void JoinSegmentsRecursive
             
              std::vector<cv::Point> joined;
 
+            if (closeBeginToBegin && closeEndToEnd)
+            {
+                if (distance(inputVector[j].front(),inputVector[i].front()) 
+                > distance(inputVector[j].back(),inputVector[i].back()))
+                {
+                    closeBeginToBegin = false;
+                }
+                else
+                {
+                    closeEndToEnd = false;
+                }
+            }
+
             if (closeBeginToEnd || closeEndToBegin || closeBeginToBegin || closeEndToEnd)
             {
                 // JOIN WHERE THEY INTERSECT IF ELECTRODES!!!!! NOT DIRECTLY!!!
@@ -1569,7 +1583,7 @@ void JoinSegmentsRecursive
                 }
                 
                 float intersectionTolerance = 
-                            std::max(cv::arcLength(sector1, false), cv::arcLength(sector2, false)) * 2;
+                            std::max(cv::arcLength(sector1, false), cv::arcLength(sector2, false)) / 2;
 
                 if (closeBeginToEnd)
                 {
@@ -1765,7 +1779,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
 
     cv::Mat imgGray;
     cv::cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
-    
+
     cv::Mat imgBlur;
     if (this->imageType == ImageType::XRAY)
     {
@@ -1776,10 +1790,12 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
         cv::bilateralFilter(imgGray, imgBlur, 7, 75, 75);       
     }
 
+    cv::normalize(imgBlur, imgBlur, 0, 255, cv::NORM_MINMAX, CV_8UC1);
     // TRACING
     cv::Mat toTrace = img.clone();
 
-    int lenThr = 40;
+
+    int lenThr = 20;
     double distThr = 1.4142;
     int canny1Thr = 10;
     int canny2Thr = 40;
@@ -1787,7 +1803,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
     if (imageType == ImageType::PHOTO)
     {
         lenThr = 40;
-        canny1Thr = 150;
+        canny1Thr = 100;
         canny2Thr = 200;
     }
     cv::Ptr<cv::ximgproc::FastLineDetector> fld =
@@ -1797,7 +1813,7 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                                                 /*aperture=*/3, /*do_merge=*/true);
 
     std::vector<cv::Vec4f> lines;
-    fld->detect(imgGray, lines);
+    fld->detect(imgBlur, lines);
 
     if (lines.size() < 1)
     {
@@ -1813,16 +1829,16 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                                 cv::Point(cvRound(l[2]), cvRound(l[3])) });
         }
 
-        // for (auto poly : segments)
-        // {
-        //     cv::polylines(toTrace, poly, 0, colours[1]);
-        // }
+        for (auto poly : segments)
+        {
+            cv::polylines(imgBlur, poly, 0, colours[1]);
+        }
 
-        // cv::imshow("raw", toTrace);
+        cv::imshow("raw", imgBlur);
 
         //join broken contours
         this->lamp.electrodes.clear();
-        double tolerance = 0.2; //imageType == ImageType::XRAY ? 0.2 : 0.1;
+        double tolerance = 0.2;//imageType == ImageType::XRAY ? 0.3 : 0.2;
         JoinSegmentsRecursive(segments, electrodesJoined, tolerance, true, true, imageType, cv::Point(imgGray.cols, imgGray.rows));
 
         if (electrodesJoined.size() < 1)
@@ -1843,21 +1859,21 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                 electrodesJoined.pop_back();
             }
 
-            // cv::Mat toShow = img.clone();
-            // int i = 1;
-            // for (auto poly : electrodesJoined)
-            // {
-            //     cv::polylines(toShow, poly, 0, colours[3],3);
-            //     cv::putText(toShow, 
-            //         cv::String(std::to_string(i)),  
-            //         poly[0],
-            //         cv::FONT_HERSHEY_PLAIN,
-            //         1.5,
-            //         colours[3]
-            //     );
-            //     i++;
-            // }
-            // cv::imshow("JOINED", toShow);
+            cv::Mat toShow = img.clone();
+            int i = 1;
+            for (auto poly : electrodesJoined)
+            {
+                cv::polylines(toShow, poly, 0, colours[3],3);
+                cv::putText(toShow, 
+                    cv::String(std::to_string(i)),  
+                    poly[0],
+                    cv::FONT_HERSHEY_PLAIN,
+                    1.5,
+                    colours[3]
+                );
+                i++;
+            }
+            cv::imshow("JOINED", toShow);
 
             // find vertices
             
