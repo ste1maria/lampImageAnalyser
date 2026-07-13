@@ -952,6 +952,8 @@ bool LampImageAnalyser::SimplifyLampContours()
 
         int pixels2mm = 2 * this->lamp.pixelMmRatio;
 
+        int pixels1and8mm = static_cast<int>(1.8 * this->lamp.pixelMmRatio);
+
         for (size_t i = 0; i < trueContours.size(); i++)
         {
             // find point on curve that lies approximately on the center horizontal line of the lamp
@@ -980,10 +982,10 @@ bool LampImageAnalyser::SimplifyLampContours()
             }
             
             // go up and down 2 mm from the center (or left and right)
-            int y_up = trueContours[i][indexCenter].y - pixels2mm;
-            int y_down = trueContours[i][indexCenter].y + pixels2mm;
-            int xLeft = trueContours[i][indexCenter].x - pixels2mm;
-            int xRight = trueContours[i][indexCenter].x + pixels2mm;
+            int y_up = trueContours[i][indexCenter].y - pixels1and8mm;
+            int y_down = trueContours[i][indexCenter].y + pixels1and8mm;
+            int xLeft = trueContours[i][indexCenter].x - pixels1and8mm;
+            int xRight = trueContours[i][indexCenter].x + pixels1and8mm;
 
             int bestIdx_up(-1), bestIdx_down(-1);
             // maximum tolerance to Y difference
@@ -1829,12 +1831,12 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                                 cv::Point(cvRound(l[2]), cvRound(l[3])) });
         }
 
-        for (auto poly : segments)
-        {
-            cv::polylines(imgBlur, poly, 0, colours[1]);
-        }
+        // for (auto poly : segments)
+        // {
+        //     cv::polylines(imgBlur, poly, 0, colours[1]);
+        // }
 
-        cv::imshow("raw", imgBlur);
+        // cv::imshow("raw", imgBlur);
 
         //join broken contours
         this->lamp.electrodes.clear();
@@ -1859,21 +1861,21 @@ bool LampImageAnalyser::CalculateElectrodes(QImage& inputImage)
                 electrodesJoined.pop_back();
             }
 
-            cv::Mat toShow = img.clone();
-            int i = 1;
-            for (auto poly : electrodesJoined)
-            {
-                cv::polylines(toShow, poly, 0, colours[3],3);
-                cv::putText(toShow, 
-                    cv::String(std::to_string(i)),  
-                    poly[0],
-                    cv::FONT_HERSHEY_PLAIN,
-                    1.5,
-                    colours[3]
-                );
-                i++;
-            }
-            cv::imshow("JOINED", toShow);
+            // cv::Mat toShow = img.clone();
+            // int i = 1;
+            // for (auto poly : electrodesJoined)
+            // {
+            //     cv::polylines(toShow, poly, 0, colours[3],3);
+            //     cv::putText(toShow, 
+            //         cv::String(std::to_string(i)),  
+            //         poly[0],
+            //         cv::FONT_HERSHEY_PLAIN,
+            //         1.5,
+            //         colours[3]
+            //     );
+            //     i++;
+            // }
+            // cv::imshow("JOINED", toShow);
 
             // find vertices
             
@@ -2151,15 +2153,17 @@ void LampImageAnalyser::RunFullAnalysis(QImage& imgToProcess)
             double electrodesAngle = this->lamp.electrodesAngle;
             
             const QChar delimeter = ',';
-            for (auto wallCenter : this->lamp.wallsCenters)
+            for (auto wallCircleCenter : this->lamp.wallsCenters)
             {
-                fullResultsString += QString("(%1;%2)").arg(wallCenter.x()).arg(wallCenter.y()) + delimeter;
+                fullResultsString += QString("(%1;%2)").arg(wallCircleCenter.x()).arg(wallCircleCenter.y()) + delimeter;
             }
 
             for (auto wallRadius : this->lamp.wallsRadii)
             {
                 fullResultsString += QString::number(wallRadius, 'f', 2) + delimeter;
             }
+
+            fullResultsString +=  QString("(%1;%2)").arg(this->lamp.lampCenter.x).arg(this->lamp.lampCenter.y) + delimeter;
 
             fullResultsString += QString::number(electrodesDistanceMm, 'f', 2) + delimeter;
             fullResultsString += QString::number(electrodesAngle, 'f', 2) + delimeter;

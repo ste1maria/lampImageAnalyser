@@ -63,6 +63,7 @@ private:
     bool imageUploaded = false;
     QPair<QPointF, QPointF> vertices;
     int vertex_count = 0;
-
+    QString saveDir = "";
+    
     void ShowImage(const QImage& image);
 };

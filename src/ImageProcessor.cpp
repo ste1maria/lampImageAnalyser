@@ -1,6 +1,7 @@
 #include "ImageProcessor.h"
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QDebug>
 #include <cmath>
 #include "mainwindow.h"
@@ -74,16 +75,24 @@ void ImageProcessor::ShowImage(const QImage& image)
 
 void ImageProcessor::SaveImage(QString serialNumber, bool batch)
 {
+    QFileDialog saveDialog;
+    if (saveDir != "")
+    {
+        saveDialog.setDirectory(saveDir);
+    }
+
     QString filenameString = QString("lamp_%1.png").arg(serialNumber);
     QString filename = filenameString;
     if (!batch)
     {
-        QString filename = QFileDialog::getSaveFileName(
+        filename = saveDialog.getSaveFileName(
                 nullptr,
                 "Save Image As",
-                QString("lamp_%1.png").arg(serialNumber),
+                this->saveDir + "/" + filenameString,
                 "Images (*.png *.bmp);;All Files (*)"
         );
+
+        this->saveDir = QFileInfo(filename).absolutePath();
     }
 
     QFile data(filename);
@@ -94,20 +103,28 @@ void ImageProcessor::SaveImage(QString serialNumber, bool batch)
 }
 
 
+
 void ImageProcessor::SaveCalculations(QString serialNumber, bool batch)
 {
+    QFileDialog saveDialog;
+    if (saveDir != "")
+    {
+        saveDialog.setDirectory(saveDir);
+    }
+
     QString filenameString = QString("lamp_%1_calc.csv").arg(serialNumber);
     QString filename = filenameString;
     if (!batch)
     {
-        QString filename = QFileDialog::getSaveFileName(
+        filename = saveDialog.getSaveFileName(
                 nullptr,
                 "Save Calculations As",
-                filenameString,
+                this->saveDir + "/" + filenameString,
                 "Text file (*.csv);;All Files (*)"
         );
+        this->saveDir = QFileInfo(filename).absolutePath();
     }
-
+        
     QFile data(filename);
 
     if (data.open(QFile::WriteOnly | QFile::Truncate))
@@ -122,16 +139,23 @@ void ImageProcessor::SaveCalculations(QString serialNumber, bool batch)
 
 void ImageProcessor::SaveContours(QString serialNumber, bool batch)
 {
+    QFileDialog saveDialog;
+    if (saveDir != "")
+    {
+        saveDialog.setDirectory(saveDir);
+    }
+
     QString filenameString = QString("lamp_%1_contours.csv").arg(serialNumber);
     QString filename = filenameString;
     if (!batch)
     {
-        QString filename = QFileDialog::getSaveFileName(
+        filename = saveDialog.getSaveFileName(
                 nullptr,
                 "Save Lamp Contours As",
-                filenameString,
+                saveDir + '/' + filenameString,
                 "Text file (*.csv);;All Files (*)"
         );
+        this->saveDir = QFileInfo(filename).absolutePath();
     }
 
     QFile data(filename);
