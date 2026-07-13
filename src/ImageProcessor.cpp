@@ -91,18 +91,16 @@ void ImageProcessor::SaveImage(QString serialNumber, bool batch)
                 this->saveDir + "/" + filenameString,
                 "Images (*.png *.bmp);;All Files (*)"
         );
-
-        this->saveDir = QFileInfo(filename).absolutePath();
     }
 
     QFile data(filename);
 
-    if (!filename.isEmpty()) {
+    if (!filename.isEmpty()) 
+    {
+        this->saveDir = QFileInfo(filename).absolutePath();
         this->currentImage.save(filename);
     }
 }
-
-
 
 void ImageProcessor::SaveCalculations(QString serialNumber, bool batch)
 {
@@ -122,18 +120,21 @@ void ImageProcessor::SaveCalculations(QString serialNumber, bool batch)
                 this->saveDir + "/" + filenameString,
                 "Text file (*.csv);;All Files (*)"
         );
-        this->saveDir = QFileInfo(filename).absolutePath();
     }
-        
-    QFile data(filename);
-
-    if (data.open(QFile::WriteOnly | QFile::Truncate))
+    
+    if (!filename.isEmpty())
     {
-        QTextStream out(&data);
-        QString header = "SN,r(1),r(2),r(3),r(4),R(1),R(2),R(3),R(4),Distance electrodes,"
-                            "Angle electrodes,Left wall,RightWall,Lamp width\r\n";
-        QString fullRow = header + serialNumber + ',' + this->analyser->GetResultsString();
-        out << fullRow;
+        this->saveDir = QFileInfo(filename).absolutePath();
+        QFile data(filename);
+
+        if (data.open(QFile::WriteOnly | QFile::Truncate))
+        {
+            QTextStream out(&data);
+            QString header = "SN,r(1),r(2),r(3),r(4),R(1),R(2),R(3),R(4),Distance electrodes,"
+                                "Angle electrodes,Left wall,RightWall,Lamp width\r\n";
+            QString fullRow = header + serialNumber + ',' + this->analyser->GetResultsString();
+            out << fullRow;
+        }
     }
 }
 
@@ -155,15 +156,18 @@ void ImageProcessor::SaveContours(QString serialNumber, bool batch)
                 saveDir + '/' + filenameString,
                 "Text file (*.csv);;All Files (*)"
         );
-        this->saveDir = QFileInfo(filename).absolutePath();
     }
 
-    QFile data(filename);
-
-    if (data.open(QFile::WriteOnly | QFile::Truncate))
+    if (!filename.isEmpty())
     {
-        QTextStream out(&data);
-        out << this->analyser->GetContoursTable();
+        this->saveDir = QFileInfo(filename).absolutePath();
+        QFile data(filename);
+
+        if (data.open(QFile::WriteOnly | QFile::Truncate))
+        {
+            QTextStream out(&data);
+            out << this->analyser->GetContoursTable();
+        }
     }
 }
 
