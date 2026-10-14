@@ -16,13 +16,13 @@
       "binaryDir": "${sourceDir}/build/windows-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_C_COMPILER": "cl",
-        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe",
         "CMAKE_MAKE_PROGRAM": "C:/ninja/ninja.exe",
         "CMAKE_EXPORT_COMPILE_COMMANDS": true,
-        "Qt6_DIR": "C:/Qt/Qt-6.9.0/lib/cmake/Qt6",
-        "CMAKE_PREFIX_PATH": "C:/Qt/Qt-6.9.0/lib/cmake",
-        "OpenCV_DIR": "C:/opencv/x64/vc17/lib"
+        "Qt6_DIR": "C:/Qt/6.12/lib/cmake/Qt6",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.12/lib/cmake",
+        "OpenCV_DIR": "C:/opencv/opencv/x64/vc18/lib"
       }
     },
     {

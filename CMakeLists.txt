@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
-    set(OpenCV_DIR "C:/opencv/x64/vc17/lib")
+    set(OpenCV_DIR "C:/opencv/opencv/x64/vc18/lib")
 endif()
 
 find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets Charts REQUIRED)
@@ -21,10 +21,10 @@ if(UNIX)
     link_directories(/opt/pylon/lib)
     link_directories(/usr/local/lib)
 elseif(WIN32)
-    include_directories(C:/opencv/include/opencv2)
-    include_directories(C:/Qt/Qt-6.9.0/include)
-    link_directories(C:/Qt/Qt-6.9.0/lib)
-    link_directories(C:/opencv/x64/vc17/lib)
+    include_directories(C:/opencv/opencv/include/opencv2)
+    include_directories(C:/Qt/6.12/include)
+    link_directories(C:/Qt/6.12/lib)
+    link_directories(C:/opencv/opencv/x64/vc18/lib)
 endif()
 
 include_directories(
